@@ -17,7 +17,7 @@ import { getAdapter } from "../src/scan/adapters.js";
 import { writeFileSync } from "node:fs";
 
 const pi = getAdapter("pi")!;
-import { compressEvents } from "../src/observe/prompts.js";
+import { chunkEvents } from "../src/observe/prompts.js";
 import { runScan } from "../src/pipeline.js";
 import { loadState } from "../src/scan/state.js";
 import { mergeConfig } from "../src/config.js";
@@ -107,11 +107,11 @@ describe("adapter on real session files", () => {
 	});
 
 	it("strips control characters that would crash spawn argv", () => {
-		const out = compressEvents([{ role: "tool", text: "before\u0000after\u0001tail" }]);
-		expect(out).toContain("before");
-		expect(out).toContain("after");
-		expect(out).toContain("tail");
-		expect(out).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/);
+		const { chunk } = chunkEvents([{ role: "tool", text: "before\u0000after\u0001tail" }]);
+		expect(chunk).toContain("before");
+		expect(chunk).toContain("after");
+		expect(chunk).toContain("tail");
+		expect(chunk).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/);
 	});
 
 	it("waits on a torn real-format line and absorbs it once the newline lands", () => {

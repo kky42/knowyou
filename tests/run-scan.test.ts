@@ -87,7 +87,9 @@ describe("runScan orchestration filters", () => {
 		expect(report.observations).toHaveLength(0);
 		const entry = loadState(home).sessions[sessionFile];
 		expect(entry?.noise).toBe(true);
-		expect(entry?.offset).toBe(entry?.bytes); // skipped to EOF
+		// The offset must NOT advance: once the session qualifies (turn 2+), the whole
+		// unabsorbed region — including the opening turn — gets distilled.
+		expect(entry?.offset).toBe(0);
 	});
 
 	it("keeps sub-threshold increments pending and accumulates them into the next round", async () => {

@@ -8,7 +8,8 @@ const PATTERNS: RegExp[] = [
 	/\bBearer\s+[A-Za-z0-9._-]{24,}\b/gi,
 	/\beyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b/g, // JWTs
 	/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, // private key blocks
-	/(["']?(?:api[_-]?key|secret|token|password)["']?\s*[:=]\s*["'])[^"'\s]{8,}(["'])/gi,
+	// key=value / key: value assignments (quoted and unquoted — .env and shell style)
+	/\b[A-Za-z0-9_]*(?:password|passwd|secret|token|api[_-]?key|access[_-]?key|credential)[A-Za-z0-9_]*\s*[:=]\s*["']?[^\s"']{8,}/gi,
 ];
 
 const REPLACEMENT = "[REDACTED]";

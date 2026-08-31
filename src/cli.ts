@@ -7,6 +7,7 @@ import { observePhase } from "./observe/observe.js";
 import { renderIndex } from "./render/index-render.js";
 import { runConsolidation, poolFiles } from "./consolidate/consolidate.js";
 import { start as scheduleStart, stop as scheduleStop, isRegistered, plistPath } from "./schedule.js";
+import { acquireLock } from "./lock.js";
 
 const USAGE = `knowyou — an agent-agnostic background memory layer
 
@@ -37,6 +38,22 @@ async function cmdScan(home: string): Promise<number> {
 }
 
 async function cmdRun(home: string): Promise<number> {
+	// Whole-pipeline mutex: a consolidation's LLM call takes minutes, and a launchd
+	// round overlapping a manual run would do concurrent read-modify-writes on
+	// MEMORY.md + the pool (observations already deleted → memories erased).
+	const release = acquireLock(home);
+	if (!release) {
+		console.log("another knowyou run is in progress — skipping this round");
+		return 0;
+	}
+	try {
+		return await runPipeline(home);
+	} finally {
+		release();
+	}
+}
+
+async function runPipeline(home: string): Promise<number> {
 	const config = loadConfig(home);
 	const state = loadState(home);
 

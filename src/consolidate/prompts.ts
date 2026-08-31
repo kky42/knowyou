@@ -59,7 +59,9 @@ ${memorySection}
 
 ## Incoming observations (oldest first)
 
-${batchText}
+${batch.length > 0 ? batchText : "(None this round.)"}
+
+${batch.length === 0 ? "IMPORTANT: there are no incoming observations. Your ONLY task is to shrink MEMORY.md to fit the budget: condense the oldest sections and move their content into the JOURNAL section." : ""}
 
 ## How to fold
 

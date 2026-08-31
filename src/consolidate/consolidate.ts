@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, unlink
 import { join } from "node:path";
 import type { KnowyouConfig } from "../config.js";
 import { runAgentPrompt } from "../agents/runner.js";
+import { atomicWriteFileSync } from "../atomic.js";
 import { buildConsolidationPrompt, type ConsolidationInput } from "./prompts.js";
 
 export interface ConsolidationReport {
@@ -44,13 +45,17 @@ export async function runConsolidation(
 	const report: ConsolidationReport = { triggered: false, folded: 0, memoryChars: 0, overQuota: false, errors: [] };
 
 	const pool = poolFiles(home);
-	// Trigger at the limit (>=): the pool is bounded at maxObservations, not one past it.
-	if (pool.length < config.limits.maxObservations) return report;
-	report.triggered = true;
-
-	const batch = pool.slice(0, config.limits.consolidateBatchSize);
 	const memoryFile = join(home, "MEMORY.md");
 	const currentMemory = existsSync(memoryFile) ? readFileSync(memoryFile, "utf8") : "";
+	// Two triggers: pool at its limit, OR MEMORY.md over its quota (the soft-budget
+	// self-correction path — without this, an oversized MEMORY.md would never shrink
+	// unless the pool happened to fill up again).
+	const poolFull = pool.length >= config.limits.maxObservations;
+	const overQuota = currentMemory.length > config.limits.maxMemoryChars;
+	if (!poolFull && !overQuota) return report;
+	report.triggered = true;
+
+	const batch = pool.slice(0, Math.max(1, config.limits.consolidateBatchSize));
 
 	const batchItems = batch.map((file) => {
 		const raw = readFileSync(file, "utf8");
@@ -98,11 +103,11 @@ export async function runConsolidation(
 		const pad = (n: number) => String(n).padStart(2, "0");
 		const slug = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
 		const journalFile = join(journalsDir, `${slug}.md`);
-		writeFileSync(journalFile, `---\ncreated: ${now.toISOString()}\nfolded: ${batch.length}\n---\n${journal}\n`);
+		atomicWriteFileSync(journalFile, `---\ncreated: ${now.toISOString()}\nfolded: ${batch.length}\n---\n${journal}\n`);
 		report.journalFile = journalFile;
 	}
 
-	writeFileSync(memoryFile, `${newMemory}\n`);
+	atomicWriteFileSync(memoryFile, `${newMemory}\n`);
 
 	for (const file of batch) {
 		try {

@@ -1,6 +1,9 @@
 export interface MessageEvent {
 	role: "user" | "assistant" | "tool";
 	text: string;
+	/** File byte offset just past this event's line — lets the watermark absorb
+	 *  partial increments without losing the remainder. Set by the scan adapters. */
+	endOffset?: number;
 }
 
 const PER_MESSAGE_CAP: Record<MessageEvent["role"], number> = { user: 4000, assistant: 4000, tool: 300 };
@@ -11,27 +14,23 @@ const TOTAL_CAP = 80_000;
  * distiller's shape: keep user/assistant turns nearly verbatim, collapse tool output to
  * short lines. Recent turns matter more, so an over-cap region keeps its tail.
  */
-export function compressEvents(events: MessageEvent[]): string {
-	const lines = events.map((event) => {
+export function chunkEvents(events: MessageEvent[], totalCap = TOTAL_CAP): { chunk: string; consumed: number } {
+	const lines: string[] = [];
+	let total = 0;
+	let consumed = 0;
+	for (const event of events) {
 		const cap = PER_MESSAGE_CAP[event.role];
 		let text = event.text.length > cap ? event.text.slice(0, cap) + " …[truncated]" : event.text;
 		// Tool output can carry binary bytes; NUL/control chars crash spawn argv limits.
 		text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
-		return `## ${event.role}\n${text}`;
-	});
-	const joined = lines.join("\n\n");
-	if (joined.length <= TOTAL_CAP) return joined;
-	// Walk from the tail accumulating events until over cap, then keep that suffix.
-	const kept: string[] = [];
-	let total = 0;
-	for (let i = lines.length - 1; i >= 0; i--) {
-		const line = lines[i];
-		if (line === undefined) continue;
+		const line = `## ${event.role}\n${text}`;
+		if (lines.length > 0 && total + line.length + 2 > totalCap) break;
+		lines.push(line);
 		total += line.length + 2;
-		if (total > TOTAL_CAP) break;
-		kept.unshift(line);
+		consumed += 1;
 	}
-	return kept.join("\n\n");
+	// consumed is 0 only for an empty input — a single event always fits (per-message cap).
+	return { chunk: lines.join("\n\n"), consumed };
 }
 
 const PROMPT_TEMPLATE = `You distill an observation from a slice of an AI coding-agent session transcript. The slice may be a continuation of earlier context you cannot see.

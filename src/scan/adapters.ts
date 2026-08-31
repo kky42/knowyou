@@ -149,7 +149,10 @@ function harnessAdapter(
 				const events: MessageEvent[] = [];
 				let newChars = 0;
 				let userTurns = 0;
+				let lineStartByte = 0;
 				for (const line of region.split("\n")) {
+					const lineEndFileOffset = effectiveOffset + lineStartByte + Buffer.byteLength(line, "utf8") + 1;
+					lineStartByte += Buffer.byteLength(line, "utf8") + 1;
 					if (!line.trim()) continue;
 					let entry: any;
 					try {
@@ -165,7 +168,7 @@ function harnessAdapter(
 						const role = raw.role === "user" ? "user" : raw.role === "assistant" ? "assistant" : "tool";
 						newChars += clean.length;
 						if (role === "user") userTurns += 1;
-						events.push({ role, text: clean });
+						events.push({ role, text: clean, endOffset: lineEndFileOffset });
 					}
 				}
 				return { events, userTurns, newChars, newOffset };

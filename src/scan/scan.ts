@@ -113,11 +113,12 @@ export async function scanPhase(config: KnowyouConfig, state: ScanState, now = n
 					chunks: 0,
 				};
 
-				if (fileUnchanged(entry, info.mtimeMs, info.bytes) && !entry.pending) {
-					// Same file as last scan: its last classification still holds. Pending
-					// files are re-evaluated every round (cheap — no LLM) so threshold or
-					// config changes take effect without waiting for new content.
-					classify(entry.noise ? "noise" : "unchanged");
+				if (fileUnchanged(entry, info.mtimeMs, info.bytes) && entry.offset >= info.bytes) {
+					// Fully absorbed and unchanged: the last classification still holds.
+					// A partially-absorbed file (offset < bytes after chunked distillation)
+					// falls through — its remainder is re-evaluated below. Pending files also
+					// re-evaluate every round so config changes take effect without new content.
+					classify(entry.noise ? "noise" : entry.pending ? "pending" : "unchanged");
 					continue;
 				}
 
@@ -125,8 +126,9 @@ export async function scanPhase(config: KnowyouConfig, state: ScanState, now = n
 				const userTurns = entry.userTurns + inc.userTurns;
 
 				if (userTurns < config.scan.minUserTurns) {
-					// Whole-session noise; on observe its offset advances to the new EOF.
-					classify("noise", { userTurns, newChars: inc.newChars, newOffset: inc.newOffset });
+					// Whole-session noise. The offset must NOT advance: the unabsorbed opening
+					// turns would be lost forever once the session later qualifies.
+					classify("noise", { userTurns, newChars: inc.newChars });
 					continue;
 				}
 				if (inc.newChars < config.scan.minNewChars) {

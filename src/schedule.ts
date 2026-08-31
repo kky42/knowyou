@@ -30,7 +30,23 @@ export function cliScriptPath(): string {
 	return script;
 }
 
-export function buildPlist(opts: { nodePath: string; scriptPath: string; intervalSeconds: number; logPath: string }): string {
+/** Directory containing the `pi` CLI — launchd's default PATH lacks it (e.g. nvm/hermes). */
+function piDir(): string | undefined {
+	try {
+		const which = execFileSync("which", ["pi"], { encoding: "utf8" }).trim();
+		return which ? dirname(which) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+export function buildPlist(opts: {
+	nodePath: string;
+	scriptPath: string;
+	intervalSeconds: number;
+	logPath: string;
+	piPath?: string;
+}): string {
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -45,6 +61,11 @@ export function buildPlist(opts: { nodePath: string; scriptPath: string; interva
 	</array>
 	<key>StartInterval</key>
 	<integer>${opts.intervalSeconds}</integer>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>${opts.piPath ? opts.piPath + ":" : ""}/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
 	<key>RunAtLoad</key>
 	<false/>
 	<key>StandardOutPath</key>
@@ -95,7 +116,7 @@ export function start(): { intervalSeconds: number; jobPath: string; logPath: st
 		mkdirSync(dirname(jobPath), { recursive: true });
 		writeFileSync(
 			jobPath,
-			buildPlist({ nodePath: process.execPath, scriptPath, intervalSeconds, logPath }),
+			buildPlist({ nodePath: process.execPath, scriptPath, intervalSeconds, logPath, piPath: piDir() }),
 		);
 		// bootout any stale registration before (re)bootstrap; ignore "not loaded" errors.
 		try {
@@ -111,7 +132,9 @@ export function start(): { intervalSeconds: number; jobPath: string; logPath: st
 	try {
 		const current = execFileSync("crontab", ["-l"], { encoding: "utf8" }).split("\n");
 		const kept = current.filter((l) => !l.includes(LABEL));
-		const cron = `*/${Math.max(1, Math.round(intervalSeconds / 60))} * * * * ${process.execPath} ${scriptPath} run >> ${logPath} 2>&1 # ${LABEL}`;
+		const piDirLinux = piDir();
+		const pathPrefix = piDirLinux ? `PATH=${piDirLinux}:/usr/bin:/bin ` : "";
+		const cron = `*/${Math.max(1, Math.round(intervalSeconds / 60))} * * * * ${pathPrefix}${process.execPath} ${scriptPath} run >> ${logPath} 2>&1 # ${LABEL}`;
 		kept.push(cron);
 		writeFileSync(jobPath + ".cron", kept.join("\n") + "\n");
 		execFileSync("crontab", [jobPath + ".cron"]);

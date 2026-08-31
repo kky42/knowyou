@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { atomicWriteFileSync } from "../atomic.js";
 import { join } from "node:path";
 
 /**
@@ -46,7 +47,7 @@ export function loadState(home: string): ScanState {
 
 export function saveState(home: string, state: ScanState): void {
   mkdirSync(home, { recursive: true });
-  writeFileSync(join(home, ".state.json"), JSON.stringify(state, null, "\t") + "\n");
+  atomicWriteFileSync(join(home, ".state.json"), JSON.stringify(state, null, "\t") + "\n");
 }
 
 /** Has the file changed since we last saw it? */
