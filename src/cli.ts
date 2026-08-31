@@ -4,6 +4,7 @@ import { knowyouHome, loadConfig } from "./config.js";
 import { loadState, saveState } from "./scan/state.js";
 import { scanPhase, observePhase } from "./scan/scan.js";
 import { renderIndex } from "./render/index-render.js";
+import { runConsolidation, poolFiles } from "./consolidate/consolidate.js";
 
 const USAGE = `knowyou — an agent-agnostic background memory layer
 
@@ -61,10 +62,19 @@ async function cmdRun(home: string): Promise<number> {
 	saveState(home, state);
 	if (observe.deferred) console.log(`deferred: ${observe.deferred} candidate(s) left for the next run (per-run cap)`);
 
-	// Consolidation (stage B) not yet implemented.
-	const obsDir = join(home, "observations");
-	const pool = existsSync(obsDir) ? readdirSync(obsDir).filter((f) => f.endsWith(".md")).length : 0;
-	console.log(`consolidate: not implemented yet (pool ${pool}/${config.limits.maxObservations})`);
+	const consolidation = await runConsolidation(config, home);
+	if (consolidation.triggered) {
+		console.log(
+			`consolidate: folded ${consolidation.folded} observation(s) — MEMORY.md ${consolidation.memoryChars}/${config.limits.maxMemoryChars} chars` +
+				(consolidation.overQuota ? " (over quota — will shrink next round)" : ""),
+		);
+		if (consolidation.journalFile) console.log(`journal: ${consolidation.journalFile}`);
+		for (const err of consolidation.errors) console.error(`consolidate error: ${err}`);
+	} else {
+		const pool = poolFiles(home).length;
+		console.log(`consolidate: not triggered (pool ${pool}/${config.limits.maxObservations})`);
+	}
+	saveState(home, state);
 
 	const index = renderIndex(home);
 	console.log(`INDEX.md: ${index.file} (${index.count} entries)`);
