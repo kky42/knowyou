@@ -24,6 +24,10 @@ export async function runAgentPrompt(opts: {
 		"-np", // no prompt templates
 		"-nt", // no tools
 		"--offline",
+		// Replace pi's coding-assistant persona: the runner is a text engine, our prompt
+		// is the entire instruction set.
+		"--system-prompt",
+		"You are a text-processing engine. Follow the user's instructions exactly and output only what they specify.",
 	];
 	if (provider) args.push("--provider", provider);
 	args.push("--model", modelId, "--thinking", opts.thinking, "--", opts.prompt);
