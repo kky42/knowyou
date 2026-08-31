@@ -81,6 +81,17 @@ async function main(argv: string[]): Promise<number> {
 		const memoryFile = join(home, "MEMORY.md");
 		const memoryChars = existsSync(memoryFile) ? statSync(memoryFile).size : 0;
 		console.log(`MEMORY.md: ${memoryChars}/${config.limits.maxMemoryChars} chars`);
+		if (state.lastRun) {
+			const lr = state.lastRun;
+			console.log(
+				lr.ok
+					? `last run: ${lr.at.slice(0, 19).replace("T", " ")} — ok`
+					: `last run: ${lr.at.slice(0, 19).replace("T", " ")} — FAILED (${lr.errorCount} errors, retrying next round)`,
+			);
+			if (lr.lastError) console.log(`  last error: ${lr.lastError.slice(0, 200)}`);
+		} else {
+			console.log("last run: never");
+		}
 		console.log(`schedule: every ${config.schedule.updateEverySeconds}s (registered: unknown — start/stop not implemented)`);
 		return 0;
 	}

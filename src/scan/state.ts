@@ -22,6 +22,8 @@ export interface SessionWatermark {
 export interface ScanState {
   version: 1;
   sessions: Record<string, SessionWatermark>;
+  /** Outcome of the last real pipeline run — surfaced by `knowyou status`. */
+  lastRun?: { at: string; ok: boolean; errorCount: number; lastError?: string };
 }
 
 export function loadState(home: string): ScanState {
@@ -32,7 +34,11 @@ export function loadState(home: string): ScanState {
     if (raw.version !== 1 || typeof raw.sessions !== "object" || raw.sessions === null) {
       return { version: 1, sessions: {} };
     }
-    return { version: 1, sessions: raw.sessions };
+    return {
+      version: 1,
+      sessions: raw.sessions,
+      lastRun: raw.lastRun,
+    };
   } catch {
     return { version: 1, sessions: {} };
   }

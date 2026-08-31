@@ -164,3 +164,38 @@ describe("runScan orchestration filters", () => {
 		expect(retried.observations).toHaveLength(1);
 	});
 });
+
+describe("last-run bookkeeping", () => {
+	function seedQualifyingSession(): void {
+		writeSession(
+			line({ type: "session", cwd: "/x", id: "s1" }) +
+				message("user", "x".repeat(300)) +
+				message("assistant", "y".repeat(300)) +
+				message("user", "second turn"),
+		);
+	}
+
+	it("records failures in state so knowyou status can surface them", async () => {
+		seedQualifyingSession();
+		const failing = async () => {
+			throw new Error("quota exhausted");
+		};
+		await runScan(CONFIG, home, new Date(), { distill: failing });
+		const state = loadState(home);
+		expect(state.lastRun?.ok).toBe(false);
+		expect(state.lastRun?.errorCount).toBe(1);
+		expect(state.lastRun?.lastError).toContain("quota exhausted");
+	});
+
+	it("clears to ok on a successful retry", async () => {
+		seedQualifyingSession();
+		const failing = async () => {
+			throw new Error("quota exhausted");
+		};
+		await runScan(CONFIG, home, new Date(), { distill: failing });
+		await runScan(CONFIG, home, new Date(), { distill: FAKE_DISTILL });
+		const state = loadState(home);
+		expect(state.lastRun?.ok).toBe(true);
+		expect(state.observations ?? {}).toBeDefined();
+	});
+});

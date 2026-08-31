@@ -269,6 +269,13 @@ export async function runScan(config: KnowyouConfig, home: string, now = new Dat
 	const state = loadState(home);
 	const scan = await scanPhase(config, state, now);
 	const observe = await observePhase(config, home, state, scan, now, deps);
+	const allErrors = [...scan.errors.map((e) => ({ file: e.file, error: e.error })), ...observe.errors];
+	state.lastRun = {
+		at: now.toISOString(),
+		ok: allErrors.length === 0,
+		errorCount: allErrors.length,
+		lastError: allErrors[0]?.error,
+	};
 	saveState(home, state);
 
 	const counts = scan.harnesses.reduce(
@@ -284,7 +291,7 @@ export async function runScan(config: KnowyouConfig, home: string, now = new Dat
 		pending: counts["pending"] ?? 0,
 		noise: counts["noise"] ?? 0,
 		observations: observe.observations,
-		errors: [...scan.errors.map((e) => ({ file: e.file, error: e.error })), ...observe.errors],
+		errors: allErrors,
 	};
 }
 
