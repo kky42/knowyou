@@ -14,8 +14,10 @@ import { mergeConfig } from "../src/config.js";
  */
 
 let home: string;
+let storeRoot: string;
 let store: string;
 let sessionFile: string;
+let savedEnv: string | undefined;
 
 const CONFIG = mergeConfig({
 	scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7 },
@@ -34,19 +36,24 @@ function message(role: string, text: string): string {
 	return line({ type: "message", message: { role, content: [{ type: "text", text }] } });
 }
 
-const FAKE_DISTILL = async (prompt: string) => `SUMMARY: fake summary\n\n${prompt.slice(0, 50)}`;
+const FAKE_DISTILL = async (prompt: string) => `SUMMARY: fake summary\n\n${prompt.slice(-100)}`;
 
 beforeEach(() => {
 	home = mkdtempSync(join(tmpdir(), "ky-home-"));
-	store = join(mkdtempSync(join(tmpdir(), "ky-store-")), "sessions", "proj");
+	storeRoot = mkdtempSync(join(tmpdir(), "ky-store-"));
+	store = join(storeRoot, "sessions", "proj");
 	mkdirSync(store, { recursive: true });
 	sessionFile = join(store, "s1.jsonl");
+	// Isolate from the real session store — enumerate() must only see the fixture.
+	savedEnv = process.env["KNOWYOU_STORE_ROOTS"];
+	process.env["KNOWYOU_STORE_ROOTS"] = join(storeRoot, "sessions");
 });
 
 afterEach(() => {
 	rmSync(home, { recursive: true, force: true });
-	const storeRoot = join(store, "..", "..");
 	rmSync(storeRoot, { recursive: true, force: true });
+	if (savedEnv === undefined) delete process.env["KNOWYOU_STORE_ROOTS"];
+	else process.env["KNOWYOU_STORE_ROOTS"] = savedEnv;
 });
 
 describe("runScan orchestration filters", () => {
@@ -66,7 +73,11 @@ describe("runScan orchestration filters", () => {
 	});
 
 	it("marks few-turn sessions as noise and does not distill them", async () => {
-		writeSession(line({ type: "session", cwd: "/x", id: "s1" }) + message("user", "x".repeat(300)) + message("assistant", "y".repeat(300)));
+		writeSession(
+			line({ type: "session", cwd: "/x", id: "s1" }) +
+				message("user", "x".repeat(300)) +
+				message("assistant", "y".repeat(300)),
+		);
 
 		const report = await runScan(CONFIG, home, new Date(), { distill: FAKE_DISTILL });
 
@@ -79,7 +90,12 @@ describe("runScan orchestration filters", () => {
 
 	it("keeps sub-threshold increments pending and accumulates them into the next round", async () => {
 		// 2 user turns (not noise), but only ~60 message chars — below the 100-char threshold.
-		writeSession(line({ type: "session", cwd: "/x", id: "s1" }) + message("user", "short") + message("assistant", "ok"));
+		writeSession(
+			line({ type: "session", cwd: "/x", id: "s1" }) +
+				message("user", "short") +
+				message("assistant", "ok") +
+				message("user", "tiny"),
+		);
 
 		const first = await runScan(CONFIG, home, new Date(), { distill: FAKE_DISTILL });
 		expect(first.pending).toBe(1);
@@ -97,14 +113,22 @@ describe("runScan orchestration filters", () => {
 		const distilled = loadState(home).sessions[sessionFile];
 		expect(distilled?.offset).toBe(distilled?.bytes); // fully absorbed
 		expect(distilled?.pending).toBe(false);
-		// The observation file exists and carries the accumulated content.
+		// The observation covers the WHOLE accumulated file (range starts at 0), and its
+		// body carries the appended content (the fake distill echoes the prompt tail).
 		const obsDir = join(home, "observations");
 		expect(readdirSync(obsDir)).toHaveLength(1);
-		expect(readFileSync(join(obsDir, readdirSync(obsDir)[0]!), "utf8")).toContain("short");
+		const obsText = readFileSync(join(obsDir, readdirSync(obsDir)[0]!), "utf8");
+		expect(obsText).toMatch(/^range: 0-\d+$/m);
+		expect(obsText).toContain("xxx");
 	});
 
 	it("skips unchanged files on rescan without re-distilling", async () => {
-		writeSession(line({ type: "session", cwd: "/x", id: "s1" }) + message("user", "x".repeat(300)) + message("assistant", "y".repeat(300)));
+		writeSession(
+			line({ type: "session", cwd: "/x", id: "s1" }) +
+				message("user", "x".repeat(300)) +
+				message("assistant", "y".repeat(300)) +
+				message("user", "second turn"),
+		);
 		// 2 user turns — passes the noise filter, crosses the threshold.
 		const first = await runScan(CONFIG, home, new Date(), { distill: FAKE_DISTILL });
 		expect(first.observations).toHaveLength(1);
@@ -116,7 +140,12 @@ describe("runScan orchestration filters", () => {
 	});
 
 	it("does not advance the watermark when distillation fails, so the increment retries", async () => {
-		writeSession(line({ type: "session", cwd: "/x", id: "s1" }) + message("user", "x".repeat(300)) + message("assistant", "y".repeat(300)));
+		writeSession(
+			line({ type: "session", cwd: "/x", id: "s1" }) +
+				message("user", "x".repeat(300)) +
+				message("assistant", "y".repeat(300)) +
+				message("user", "second turn"),
+		);
 
 		const failing = async () => {
 			throw new Error("model unavailable");
@@ -124,7 +153,9 @@ describe("runScan orchestration filters", () => {
 		const report = await runScan(CONFIG, home, new Date(), { distill: failing });
 
 		expect(report.errors).toHaveLength(1);
-		expect(loadState(home).sessions[sessionFile]?.offset).toBe(0);
+		// Watermark untouched: no entry (⇒ offset 0) — the increment retries next round.
+		const entry = loadState(home).sessions[sessionFile];
+		expect(entry?.offset ?? 0).toBe(0);
 
 		// Next round with a working model succeeds on the same content.
 		const retried = await runScan(CONFIG, home, new Date(), { distill: FAKE_DISTILL });
