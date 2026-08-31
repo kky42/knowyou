@@ -6,6 +6,7 @@ import { scanPhase } from "./scan/scan.js";
 import { observePhase } from "./observe/observe.js";
 import { renderIndex } from "./render/index-render.js";
 import { runConsolidation, poolFiles } from "./consolidate/consolidate.js";
+import { start as scheduleStart, stop as scheduleStop, isRegistered, plistPath } from "./schedule.js";
 
 const USAGE = `knowyou — an agent-agnostic background memory layer
 
@@ -114,13 +115,28 @@ async function main(argv: string[]): Promise<number> {
 		} else {
 			console.log("last run: never");
 		}
-		console.log(`schedule: every ${config.schedule.updateEverySeconds}s (registered: unknown — start/stop not implemented)`);
+		console.log(
+			`schedule: every ${config.schedule.updateEverySeconds}s — ` +
+				(isRegistered() ? "registered (launchd/cron active)" : "not registered (run 'knowyou start')"),
+		);
 		return 0;
 	}
 
-	if (command === "start" || command === "stop") {
-		console.error(`knowyou ${command}: not implemented yet`);
-		return 2;
+	if (command === "start") {
+		const config = loadConfig(home);
+		const result = scheduleStart();
+		console.log(`scheduled: knowyou run every ${result.intervalSeconds}s (from config)`);
+		console.log(`job: ${result.jobPath}`);
+		console.log(`log: ${result.logPath}`);
+		console.log(`config: ${join(home, "config.yaml")}`);
+		void config;
+		return 0;
+	}
+
+	if (command === "stop") {
+		scheduleStop();
+		console.log(`unscheduled (${plistPath()} removed on macOS)`);
+		return 0;
 	}
 
 	console.log(USAGE);
