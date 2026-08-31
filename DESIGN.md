@@ -109,9 +109,14 @@ knowyou run
   (A) observe      → (B) consolidate → (C) render
 ```
 
-### 扫描(沿用 backpass 的逻辑,叠加字节偏移水位)
+### 扫描(vendored backpass 代码 + 字节偏移水位)
 
-backpass 的四个机制直接沿用,它更新了我们跟着更新:
+`src/scan/backpass/` 内是 backpass discovery 层的逐字拷贝(MIT,见该目录 README):
+shared.js、interaction.js、adapters/{pi,claude,codex,grok}.js。上游更新时直接重新拷贝、
+只重放 README 里列出的微量修改。`src/scan/adapters.ts` 是 glue 层:时间窗口过滤(在
+enumerate 层完成,窗口外文件根本不返回)、字节偏移增量读取、每 harness 的消息映射
+(标注镜像自上游哪个 read())、secrets 脱敏、阈值计数。knowyou 自己的逻辑只存在于
+glue 层和管线编排。
 
 - **适配器三件套**:每个 harness 实现 `enumerate()`(枚举 session 文件: path/mtimeMs/bytes)、
   `classify()`(只读文件头几行拿 cwd/id,便宜)、`read()`(解析成消息事件)。v1 只做 pi
