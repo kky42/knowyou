@@ -25,7 +25,7 @@ async function cmdScan(home: string): Promise<number> {
 			const c = harness.counts;
 			console.log(
 				`${harness.name}: ${harness.sessions} sessions ` +
-					`(candidates: ${c["candidate"]}, pending: ${c["pending"]}, noise: ${c["noise"]}, unchanged: ${c["unchanged"]})`,
+					`(candidates: ${c["candidate"]}, pending: ${c["pending"]}, noise: ${c["noise"]}, machine: ${c["machine"]}, unchanged: ${c["unchanged"]})`,
 			);
 		}
 		for (const err of scan.errors) console.error(`error: ${err.file || err.harness}: ${err.error}`);

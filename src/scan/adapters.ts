@@ -5,6 +5,7 @@ import * as claudeAdapter from "./backpass/adapters/claude.js";
 import * as codexAdapter from "./backpass/adapters/codex.js";
 import * as grokAdapter from "./backpass/adapters/grok.js";
 import { contentToEvents, parseJsonLine } from "./backpass/adapters/shared.js";
+import { classifyInteraction, emptyInteractionSignals } from "./backpass/interaction.js";
 import { redactSecrets } from "./redact.js";
 import type { MessageEvent } from "../agents/observe-prompt.js";
 
@@ -34,6 +35,9 @@ export interface HarnessAdapter {
 	/** Files with mtime >= cutoffMs only — the time window is applied at enumeration. */
 	enumerate(cutoffMs: number): CandidateInfo[];
 	looksLikeSession(path: string): boolean;
+	/** True for non-interactive machine sessions (codex exec, claude sdk, cron bridges) —
+	 *  the self-exclusion half that --no-session cannot cover (other harnesses' runners). */
+	isExcluded(path: string): boolean;
 	readIncrement(path: string, offset: number, redact: boolean): IncrementResult;
 }
 
@@ -77,15 +81,6 @@ function genericEnumerate(root: string, cutoffMs: number): CandidateInfo[] {
 	return out;
 }
 
-function looksLikeWith(candidate: { path: string; mtimeMs: number; bytes: number }, classify: (c: any) => any): boolean {
-	try {
-		const result = classify(candidate);
-		return result !== null && result !== undefined;
-	} catch {
-		return false;
-	}
-}
-
 function harnessAdapter(
 	name: string,
 	roots: string[],
@@ -96,6 +91,17 @@ function harnessAdapter(
 	/** Grok sessions are directories; the jsonl transcript lives inside. */
 	transcriptPath: (path: string) => string = (p) => p,
 ): HarnessAdapter {
+	const classifyCandidate = (path: string): any | undefined => {
+		const stat = statCandidate(path);
+		if (!stat) return undefined;
+		try {
+			// Backpass classify() signals "not a session" with null — normalise to undefined.
+			return classifyUpstream(stat) ?? undefined;
+		} catch {
+			return undefined;
+		}
+	};
+
 	return {
 		name,
 		roots,
@@ -109,22 +115,36 @@ function harnessAdapter(
 			}
 		},
 		looksLikeSession(path: string): boolean {
-			const stat = statCandidate(path);
-			if (!stat) return false;
-			return looksLikeWith(stat, classifyUpstream);
+			return classifyCandidate(path) !== undefined;
+		},
+		isExcluded(path: string): boolean {
+			const descriptor = classifyCandidate(path);
+			if (!descriptor) return false;
+			const verdict = classifyInteraction({
+				harness: name,
+				cwd: descriptor.cwd,
+				interaction: descriptor.interaction,
+				interactionSignals: descriptor.interactionSignals ?? descriptor.extra?.interactionSignals ?? emptyInteractionSignals(),
+			});
+			return verdict === "non-interactive";
 		},
 		readIncrement(path: string, offset: number, redact: boolean): IncrementResult {
 			const jsonl = transcriptPath(path);
 			const fd = openSync(jsonl, "r");
 			try {
 				const size = fstatSync(fd).size;
-				if (size <= offset) return { events: [], userTurns: 0, newChars: 0, newOffset: Math.min(offset, size) };
-				const buffer = Buffer.alloc(size - offset);
-				readSync(fd, buffer, 0, buffer.length, offset);
+				// Truncated/rewritten file (size < offset): the old watermark points past EOF,
+				// so re-read from the start — otherwise post-truncation turns are lost forever.
+				const effectiveOffset = offset > size ? 0 : offset;
+				if (size <= effectiveOffset) {
+					return { events: [], userTurns: 0, newChars: 0, newOffset: Math.min(effectiveOffset, size) };
+				}
+				const buffer = Buffer.alloc(size - effectiveOffset);
+				readSync(fd, buffer, 0, buffer.length, effectiveOffset);
 				const lastNewline = buffer.lastIndexOf(0x0a);
-				if (lastNewline === -1) return { events: [], userTurns: 0, newChars: 0, newOffset: offset };
+				if (lastNewline === -1) return { events: [], userTurns: 0, newChars: 0, newOffset: effectiveOffset };
 				const region = buffer.subarray(0, lastNewline + 1).toString("utf8");
-				const newOffset = offset + lastNewline + 1;
+				const newOffset = effectiveOffset + lastNewline + 1;
 
 				const events: MessageEvent[] = [];
 				let newChars = 0;

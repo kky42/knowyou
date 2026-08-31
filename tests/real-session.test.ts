@@ -13,7 +13,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { looksLikeSession, readIncrement } from "../src/scan/pi-adapter.js";
+import { getAdapter } from "../src/scan/adapters.js";
+import { writeFileSync } from "node:fs";
+
+const pi = getAdapter("pi")!;
 import { compressEvents } from "../src/agents/observe-prompt.js";
 import { runScan } from "../src/scan/scan.js";
 import { loadState } from "../src/scan/state.js";
@@ -67,11 +70,11 @@ function fixtureStore(name: string): string {
 
 describe("adapter on real session files", () => {
 	it("recognises a real session file", () => {
-		expect(looksLikeSession(RICH)).toBe(true);
+		expect(pi.looksLikeSession(RICH)).toBe(true);
 	});
 
 	it("counts only message text on a real file — thinking/toolCall blocks and metadata excluded", () => {
-		const inc = readIncrement(RICH, 0, false);
+		const inc = pi.readIncrement(RICH, 0, false);
 		const bytes = statSync(RICH).size;
 		// Some real signal present…
 		expect(inc.newChars).toBeGreaterThan(200);
@@ -90,10 +93,10 @@ describe("adapter on real session files", () => {
 	it("reads only the appended increment from a real file", () => {
 		const file = join(storeRoot, "append-test.jsonl");
 		copyFileSync(RICH, file);
-		const first = readIncrement(file, 0, false);
+		const first = pi.readIncrement(file, 0, false);
 
 		appendFileSync(file, realMessage("user", "REAL_INCREMENT_MARKER — this turn happened after the scan"));
-		const second = readIncrement(file, first.newOffset, false);
+		const second = pi.readIncrement(file, first.newOffset, false);
 
 		expect(second.events).toHaveLength(1);
 		expect(second.events[0]?.role).toBe("user");
@@ -114,15 +117,15 @@ describe("adapter on real session files", () => {
 	it("waits on a torn real-format line and absorbs it once the newline lands", () => {
 		const file = join(storeRoot, "torn-test.jsonl");
 		copyFileSync(RICH, file);
-		const first = readIncrement(file, 0, false);
+		const first = pi.readIncrement(file, 0, false);
 
 		appendFileSync(file, realMessage("assistant", "torn write", true).trimEnd()); // no trailing newline
-		const torn = readIncrement(file, first.newOffset, false);
+		const torn = pi.readIncrement(file, first.newOffset, false);
 		expect(torn.newChars).toBe(0);
 		expect(torn.newOffset).toBe(first.newOffset);
 
 		appendFileSync(file, "\n"); // writer finishes the line
-		const complete = readIncrement(file, first.newOffset, false);
+		const complete = pi.readIncrement(file, first.newOffset, false);
 		// Thinking block must not count; only the text block does.
 		expect(complete.newChars).toBe("torn write".length);
 		expect(complete.events[0]?.text).toBe("torn write");
@@ -188,5 +191,32 @@ describe("scan pipeline on real session files", () => {
 		expect(report.observations).toHaveLength(0);
 		expect(existsSync(join(home, "observations")) ? readdirSync(join(home, "observations")) : []).toHaveLength(0);
 		expect(Object.keys(loadState(home).sessions)).toHaveLength(0);
+	});
+});
+
+describe("non-interactive exclusion (self-exclusion for other harnesses' runners)", () => {
+	it("excludes real codex exec sessions, keeps interactive ones", () => {
+		const codex = getAdapter("codex")!;
+		const execFile = join(FIXTURES, "real-codex-exec.jsonl");
+		// The exec fixture's session_meta carries source: "exec" — backpass interaction.js
+		// classifies it non-interactive, which is how a future knowyou codex runner is
+		// excluded from observing itself.
+		expect(codex.isExcluded(execFile)).toBe(true);
+		expect(pi.isExcluded(RICH)).toBe(false);
+	});
+
+	it("truncated files re-read from zero instead of skipping past EOF", () => {
+		const file = join(storeRoot, "sessions", "proj", "truncated.jsonl");
+		mkdirSync(join(storeRoot, "sessions", "proj"), { recursive: true });
+		copyFileSync(SMALL, file);
+		const first = pi.readIncrement(file, 0, false);
+		expect(first.newOffset).toBeGreaterThan(0);
+
+		// Rewrite: file truncated then regrown — size falls below the old offset.
+		writeFileSync(file, realMessage("user", "content written after the truncation ".repeat(3)));
+		const second = pi.readIncrement(file, first.newOffset, false);
+		expect(second.newChars).toBeGreaterThan(0); // NOT skipped
+		expect(second.events[0]?.text).toContain("after the truncation");
+		expect(second.newOffset).toBe(statSync(file).size);
 	});
 });

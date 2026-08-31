@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readIncrement, looksLikeSession } from "../src/scan/pi-adapter.js";
+import { getAdapter } from "../src/scan/adapters.js";
+
+const pi = getAdapter("pi")!;
 import { fileUnchanged, loadState, saveState } from "../src/scan/state.js";
 import { compressEvents, parseObservation } from "../src/agents/observe-prompt.js";
 import { mergeConfig } from "../src/config.js";
@@ -33,7 +35,7 @@ describe("pi adapter: increment reading", () => {
 	afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 	it("reads the full file from offset 0 and returns message chars", () => {
-		const inc = readIncrement(file, 0, false);
+		const inc = pi.readIncrement(file, 0, false);
 		expect(inc.userTurns).toBe(1);
 		expect(inc.newChars).toBeGreaterThan(500);
 		expect(inc.events).toHaveLength(2);
@@ -42,19 +44,19 @@ describe("pi adapter: increment reading", () => {
 	});
 
 	it("aligns to the last complete newline when a torn line is appended", () => {
-		const first = readIncrement(file, 0, false);
+		const first = pi.readIncrement(file, 0, false);
 		// A torn line: valid JSON but no trailing newline yet (writer mid-write).
 		appendFileSync(file, JSON.stringify({ type: "message", message: { role: "user", content: [{ type: "text", text: "partial line without newline" }] } }));
-		const second = readIncrement(file, first.newOffset, false);
+		const second = pi.readIncrement(file, first.newOffset, false);
 		// The torn line is not a complete newline yet — nothing absorbable.
 		expect(second.newChars).toBe(0);
 		expect(second.newOffset).toBe(first.newOffset);
 	});
 
 	it("sees appended complete lines on the next read", () => {
-		const first = readIncrement(file, 0, false);
+		const first = pi.readIncrement(file, 0, false);
 		appendFileSync(file, message("user", "a follow-up turn"));
-		const second = readIncrement(file, first.newOffset, false);
+		const second = pi.readIncrement(file, first.newOffset, false);
 		expect(second.events).toHaveLength(1);
 		expect(second.events[0]?.text).toContain("follow-up");
 		expect(second.newOffset).toBe(Buffer.byteLength(readFileSync(file, "utf8")));
@@ -69,23 +71,23 @@ describe("pi adapter: increment reading", () => {
 				sessionLine({ type: "message", message: { role: "assistant", content: [{ type: "thinking", text: "secret reasoning ".repeat(100) }] } }) +
 				sessionLine({ type: "custom", customType: "om.something", data: {} }),
 		);
-		const inc = readIncrement(file2, 0, false);
+		const inc = pi.readIncrement(file2, 0, false);
 		expect(inc.newChars).toBe("visible answer".length);
 	});
 
 	it("redacts secrets when asked", () => {
 		const file3 = join(dir, "s3.jsonl");
 		writeFileSync(file3, sessionLine({ type: "session", cwd: "/x", id: "s3" }) + message("user", "my key is sk-abcdefghijklmnopqrstuvwx"));
-		const inc = readIncrement(file3, 0, true);
+		const inc = pi.readIncrement(file3, 0, true);
 		expect(inc.events[0]?.text).toContain("[REDACTED]");
 		expect(inc.events[0]?.text).not.toContain("sk-abcdefghijklmnopqrstuvwx");
 	});
 
 	it("validates session header", () => {
-		expect(looksLikeSession(file)).toBe(true);
+		expect(pi.looksLikeSession(file)).toBe(true);
 		const notSession = join(dir, "other.jsonl");
 		writeFileSync(notSession, '{"type":"other"}\n');
-		expect(looksLikeSession(notSession)).toBe(false);
+		expect(pi.looksLikeSession(notSession)).toBe(false);
 	});
 });
 

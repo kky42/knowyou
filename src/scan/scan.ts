@@ -6,7 +6,7 @@ import { buildObservationPrompt, compressEvents, parseObservation } from "../age
 import { getAdapter, type CandidateInfo } from "./adapters.js";
 import { fileUnchanged, loadState, saveState, type ScanState, type SessionWatermark } from "./state.js";
 
-export type FileStatus = "candidate" | "pending" | "noise" | "unchanged" | "invalid";
+export type FileStatus = "candidate" | "pending" | "noise" | "unchanged" | "machine" | "invalid";
 
 export interface ScanDeps {
 	/** Distill one increment into raw model output. Injectable for tests. */
@@ -52,7 +52,14 @@ export interface ObserveReport {
 	errors: Array<{ file: string; error: string }>;
 }
 
-const EMPTY_COUNTS: Record<FileStatus, number> = { candidate: 0, pending: 0, noise: 0, unchanged: 0, invalid: 0 };
+const EMPTY_COUNTS: Record<FileStatus, number> = {
+	candidate: 0,
+	pending: 0,
+	noise: 0,
+	unchanged: 0,
+	machine: 0,
+	invalid: 0,
+};
 
 /**
  * Stage 1 — pure classification. Reads session stores and watermarks, never writes
@@ -86,6 +93,12 @@ export async function scanPhase(config: KnowyouConfig, state: ScanState, now = n
 			try {
 				if (!adapter.looksLikeSession(info.path)) {
 					classify("invalid");
+					continue;
+				}
+				// Non-interactive machine sessions (codex exec, claude sdk, cron bridges — and
+				// any future knowyou runner on these harnesses) are excluded from memory.
+				if (adapter.isExcluded(info.path)) {
+					classify("machine");
 					continue;
 				}
 
