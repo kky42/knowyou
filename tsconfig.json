@@ -8,7 +8,12 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "allowJs": true
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

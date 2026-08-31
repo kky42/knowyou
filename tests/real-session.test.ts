@@ -183,7 +183,8 @@ describe("scan pipeline on real session files", () => {
 
 		const report = await runScan(CONFIG, home, new Date(), { distill: FAKE_DISTILL });
 
-		expect(report.filesSeen).toBe(1);
+		// Window filter is applied inside enumerate — the old file is never returned.
+		expect(report.filesSeen).toBe(0);
 		expect(report.observations).toHaveLength(0);
 		expect(existsSync(join(home, "observations")) ? readdirSync(join(home, "observations")) : []).toHaveLength(0);
 		expect(Object.keys(loadState(home).sessions)).toHaveLength(0);

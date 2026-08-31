@@ -14,10 +14,6 @@ Usage:
   knowyou start    register the periodic job (not implemented yet)
   knowyou stop     unregister the periodic job (not implemented yet)`;
 
-function formatChars(n: number): string {
-	return n.toLocaleString("en-US");
-}
-
 async function cmdScan(home: string): Promise<number> {
 	const config = loadConfig(home);
 	const state = loadState(home);
@@ -27,19 +23,10 @@ async function cmdScan(home: string): Promise<number> {
 		console.log(`window: last ${config.scan.windowDays} days (since ${since.toISOString().slice(0, 16).replace("T", " ")})`);
 		for (const harness of scan.harnesses) {
 			const c = harness.counts;
-			const total = Object.values(c).reduce((a, b) => a + b, 0);
-			console.log(`\n${harness.name} (${harness.roots.length} store root${harness.roots.length === 1 ? "" : "s"}): ${total} sessions`);
-			console.log(`  candidates (new observations would be distilled): ${c["candidate"]}`);
-			console.log(`  pending (below threshold, accumulating):          ${c["pending"]}`);
-			console.log(`  noise (too few user turns):                       ${c["noise"]}`);
-			console.log(`  unchanged:                                        ${c["unchanged"]}`);
-			console.log(`  out-of-window:                                    ${c["out-of-window"]}`);
-			if (c["invalid"]) console.log(`  invalid:                                          ${c["invalid"]}`);
-			for (const candidate of harness.files.filter((f) => f.status === "candidate").slice(0, 10)) {
-				console.log(`    - ${formatChars(candidate.newChars)} chars · ${candidate.userTurns} turns · ${candidate.path}`);
-			}
-			const shown = harness.files.filter((f) => f.status === "candidate").length;
-			if (shown > 10) console.log(`    … and ${shown - 10} more`);
+			console.log(
+				`${harness.name}: ${harness.sessions} sessions ` +
+					`(candidates: ${c["candidate"]}, pending: ${c["pending"]}, noise: ${c["noise"]}, unchanged: ${c["unchanged"]})`,
+			);
 		}
 		for (const err of scan.errors) console.error(`error: ${err.file || err.harness}: ${err.error}`);
 		return scan.errors.length > 0 ? 1 : 0;

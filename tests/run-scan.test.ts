@@ -64,7 +64,9 @@ describe("runScan orchestration filters", () => {
 
 		const report = await runScan(CONFIG, home, new Date(), { distill: FAKE_DISTILL });
 
-		expect(report.filesSeen).toBe(1);
+		// The window filter lives inside the adapters' enumerate — old files are never
+		// returned at all, so nothing is seen, tracked, or distilled.
+		expect(report.filesSeen).toBe(0);
 		expect(report.observations).toHaveLength(0);
 		expect(existsSync(join(home, "observations"))).toBe(true);
 		expect(readdirSync(join(home, "observations"))).toHaveLength(0);

@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 
-export type HarnessName = "pi";
+export type HarnessName = "pi" | "claude" | "codex" | "grok";
 
 export interface KnowyouConfig {
   schedule: { updateEverySeconds: number };
@@ -73,7 +73,9 @@ export function mergeConfig(raw: unknown): KnowyouConfig {
   const limits = isRecord(raw["limits"]) ? raw["limits"] : {};
   const schedule = isRecord(raw["schedule"]) ? raw["schedule"] : {};
   const harnesses = Array.isArray(scan["harnesses"])
-    ? (scan["harnesses"].filter((h): h is HarnessName => h === "pi") as HarnessName[])
+    ? (scan["harnesses"].filter(
+            (h): h is HarnessName => h === "pi" || h === "claude" || h === "codex" || h === "grok",
+        ) as HarnessName[])
     : undefined;
 
   return {

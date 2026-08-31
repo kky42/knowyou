@@ -2,33 +2,16 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { KnowyouConfig } from "../config.js";
 import { runAgentPrompt } from "../agents/runner.js";
-import { buildObservationPrompt, compressEvents, parseObservation, type MessageEvent } from "../agents/observe-prompt.js";
-import { enumerateSessions, looksLikeSession, readIncrement, storeRoots } from "./pi-adapter.js";
+import { buildObservationPrompt, compressEvents, parseObservation } from "../agents/observe-prompt.js";
+import { getAdapter, type CandidateInfo } from "./adapters.js";
 import { fileUnchanged, loadState, saveState, type ScanState, type SessionWatermark } from "./state.js";
 
-export type FileStatus =
-	| "candidate" // changed, increment above threshold — would be distilled
-	| "pending" // changed (or previously marked), increment below threshold — fragments accumulate
-	| "noise" // too few user turns — never distilled
-	| "unchanged" // identical to last scan
-	| "out-of-window" // mtime older than the scan window
-	| "invalid"; // not a recognizable session file
+export type FileStatus = "candidate" | "pending" | "noise" | "unchanged" | "invalid";
 
-export interface HarnessAdapter {
-	name: string;
-	enumerate(): Array<{ path: string; mtimeMs: number; bytes: number }>;
-	looksLikeSession(path: string): boolean;
-	readIncrement(path: string, offset: number, redact: boolean): {
-		events: MessageEvent[];
-		userTurns: number;
-		newChars: number;
-		newOffset: number;
-	};
+export interface ScanDeps {
+	/** Distill one increment into raw model output. Injectable for tests. */
+	distill?: (prompt: string) => Promise<string>;
 }
-
-const ADAPTERS: Record<string, HarnessAdapter> = {
-	pi: { name: "pi", enumerate: enumerateSessions, looksLikeSession, readIncrement },
-};
 
 export interface ClassifiedFile {
 	harness: string;
@@ -36,25 +19,27 @@ export interface ClassifiedFile {
 	status: FileStatus;
 	bytes: number;
 	mtimeMs: number;
-	/** Message-text chars in the unprocessed increment (0 for unchanged/out-of-window). */
+	/** Message-text chars in the unprocessed increment (0 for unchanged). */
 	newChars: number;
-	/** User turns in the increment, plus turns already recorded for this session. */
+	/** User turns in the increment plus turns already recorded for this session. */
 	userTurns: number;
-	/** Byte offset after the last complete newline of the increment (candidates/noise). */
+	/** Byte offset after the last complete newline of the increment (candidate/noise). */
 	newOffset?: number;
 	/** Redacted message events — only attached for candidates (input to distillation). */
-	events?: MessageEvent[];
+	events?: import("../agents/observe-prompt.js").MessageEvent[];
+}
+
+export interface HarnessScan {
+	name: string;
+	sessions: number;
+	counts: Record<FileStatus, number>;
+	files: ClassifiedFile[];
 }
 
 export interface ScanResult {
 	now: Date;
 	cutoffMs: number;
-	harnesses: Array<{
-		name: string;
-		roots: string[];
-		counts: Record<FileStatus, number>;
-		files: ClassifiedFile[];
-	}>;
+	harnesses: HarnessScan[];
 	/** Files ready to distill — the input to the observe phase. */
 	candidates: ClassifiedFile[];
 	/** Changed noise files whose offset should be advanced to EOF in the observe phase. */
@@ -67,48 +52,31 @@ export interface ObserveReport {
 	errors: Array<{ file: string; error: string }>;
 }
 
-export interface ScanDeps {
-	/** Distill one increment into raw model output. Injectable for tests. */
-	distill?: (prompt: string) => Promise<string>;
-}
-
-const EMPTY_COUNTS: Record<FileStatus, number> = {
-	candidate: 0,
-	pending: 0,
-	noise: 0,
-	unchanged: 0,
-	"out-of-window": 0,
-	invalid: 0,
-};
+const EMPTY_COUNTS: Record<FileStatus, number> = { candidate: 0, pending: 0, noise: 0, unchanged: 0, invalid: 0 };
 
 /**
  * Stage 1 — pure classification. Reads session stores and watermarks, never writes
- * anything and never calls an LLM: `knowyou scan` (dry run) and the real pipeline
- * share this phase verbatim.
+ * anything and never calls an LLM: `knowyou scan` (dry run) and the real pipeline share
+ * this phase verbatim. The time window is applied inside the adapters' enumerate, so
+ * out-of-window files are never even returned.
  */
 export async function scanPhase(config: KnowyouConfig, state: ScanState, now = new Date()): Promise<ScanResult> {
 	const cutoffMs = now.getTime() - config.scan.windowDays * 86_400_000;
-	const result: ScanResult = {
-		now,
-		cutoffMs,
-		harnesses: [],
-		candidates: [],
-		noiseUpdates: [],
-		errors: [],
-	};
+	const result: ScanResult = { now, cutoffMs, harnesses: [], candidates: [], noiseUpdates: [], errors: [] };
 
 	for (const harnessName of config.scan.harnesses) {
-		const adapter = ADAPTERS[harnessName];
+		const adapter = getAdapter(harnessName);
 		if (!adapter) {
 			result.errors.push({ harness: harnessName, file: "", error: "no adapter" });
 			continue;
 		}
-		const harness = { name: adapter.name, roots: storeRoots(), counts: { ...EMPTY_COUNTS }, files: [] as ClassifiedFile[] };
+		const harness: HarnessScan = { name: adapter.name, sessions: 0, counts: { ...EMPTY_COUNTS }, files: [] };
 
-		for (const info of adapter.enumerate()) {
+		for (const info of adapter.enumerate(cutoffMs)) {
 			const base = { harness: adapter.name, path: info.path, bytes: info.bytes, mtimeMs: info.mtimeMs };
 			const classify = (status: FileStatus, extra: Partial<ClassifiedFile> = {}): void => {
 				harness.counts[status] += 1;
+				harness.sessions += 1;
 				const file: ClassifiedFile = { ...base, status, newChars: 0, userTurns: 0, ...extra };
 				harness.files.push(file);
 				if (status === "candidate") result.candidates.push(file);
@@ -116,10 +84,6 @@ export async function scanPhase(config: KnowyouConfig, state: ScanState, now = n
 			};
 
 			try {
-				if (info.mtimeMs < cutoffMs) {
-					classify("out-of-window");
-					continue;
-				}
 				if (!adapter.looksLikeSession(info.path)) {
 					classify("invalid");
 					continue;
@@ -184,6 +148,20 @@ function uniqueObservationPath(dir: string, slug: string): string {
 	return candidate;
 }
 
+function ensureEntry(state: ScanState, path: string): SessionWatermark {
+	return (
+		state.sessions[path] ?? {
+			bytes: 0,
+			mtimeMs: 0,
+			offset: 0,
+			userTurns: 0,
+			noise: false,
+			pending: false,
+			chunks: 0,
+		}
+	);
+}
+
 /**
  * Stage 2 — observe the candidates: distill each one, write observation files, advance
  * watermarks. The watermark only advances when an increment is absorbed (distilled, noise
@@ -206,15 +184,7 @@ export async function observePhase(
 
 	for (const candidate of scan.candidates) {
 		try {
-			const entry: SessionWatermark = state.sessions[candidate.path] ?? {
-				bytes: 0,
-				mtimeMs: 0,
-				offset: 0,
-				userTurns: 0,
-				noise: false,
-				pending: false,
-				chunks: 0,
-			};
+			const entry = ensureEntry(state, candidate.path);
 			const compressed = compressEvents(candidate.events ?? []);
 			const prompt = buildObservationPrompt(compressed, config.limits.maxObservationChars);
 			const raw = await distill(prompt);
@@ -244,20 +214,11 @@ export async function observePhase(
 		}
 	}
 
-	// Noise files and below-threshold files: record bookkeeping only.
+	// Noise and below-threshold files: bookkeeping only.
 	for (const file of scan.harnesses.flatMap((h) => h.files)) {
 		if (file.status === "noise" && file.newOffset !== undefined) {
-			const entry: SessionWatermark = state.sessions[file.path] ?? {
-				bytes: 0,
-				mtimeMs: 0,
-				offset: 0,
-				userTurns: 0,
-				noise: false,
-				pending: false,
-				chunks: 0,
-			};
 			state.sessions[file.path] = {
-				...entry,
+				...ensureEntry(state, file.path),
 				bytes: file.bytes,
 				mtimeMs: file.mtimeMs,
 				offset: file.newOffset,
@@ -266,20 +227,11 @@ export async function observePhase(
 				pending: false,
 			};
 		} else if (file.status === "pending" && file.newOffset !== undefined) {
-			const entry: SessionWatermark = state.sessions[file.path] ?? {
-				bytes: 0,
-				mtimeMs: 0,
-				offset: 0,
-				userTurns: 0,
-				noise: false,
-				pending: false,
-				chunks: 0,
-			};
 			state.sessions[file.path] = {
-				...entry,
+				...ensureEntry(state, file.path),
 				bytes: file.bytes,
 				mtimeMs: file.mtimeMs,
-				offset: entry.offset, // fragments accumulate — offset unchanged
+				offset: ensureEntry(state, file.path).offset, // fragments accumulate — offset unchanged
 				userTurns: file.userTurns,
 				noise: false,
 				pending: true,
@@ -319,9 +271,8 @@ export async function runScan(config: KnowyouConfig, home: string, now = new Dat
 		pending: counts["pending"] ?? 0,
 		noise: counts["noise"] ?? 0,
 		observations: observe.observations,
-		errors: [
-			...scan.errors.map((e) => ({ file: e.file, error: e.error })),
-			...observe.errors,
-		],
+		errors: [...scan.errors.map((e) => ({ file: e.file, error: e.error })), ...observe.errors],
 	};
 }
+
+export type { CandidateInfo };
