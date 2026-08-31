@@ -1,0 +1,51 @@
+# knowyou 配置模板
+# 复制到 ~/.knowyou/config.yaml 后按需修改;所有字段都有默认值,最简可用配置是空文件。
+
+# ── 后台调度 ────────────────────────────────────────────────
+schedule:
+  # 每轮扫描/更新的周期(秒)。默认 30 分钟。
+  # 幂等设计:同一轮内重复跑只会推进水位,不会重复蒸馏。
+  updateEverySeconds: 1800
+
+# ── 扫描(session 存储 → 增量识别)─────────────────────────
+scan:
+  # 只看最近 N 天的 session 文件,更早的一律忽略(即使被 resume 也不处理)。
+  windowDays: 7
+
+  # 未扫增量的消息文本(只计 user/assistant/toolResult,不含系统提示/scaffolding)
+  # 超过此字符数才值得调 LLM 蒸馏出一条 observation;不足则只推进水位,碎片滚入下一轮。
+  # 调大 = 更省调用但记忆更迟;调小 = 更及时但调用更频繁。
+  minNewChars: 20000
+
+  # user 回合数低于此值的会话视为噪声(一次性测试等),不蒸馏。
+  minUserTurns: 2
+
+  # 蒸馏前对消息文本做 secrets 脱敏(API key、token 等)。
+  redactSecrets: true
+
+  # 启用的 harness 适配器。v1 只有 pi;codex/claude 适配器加入后在这里打开。
+  harnesses:
+    - pi
+
+# ── 后台 LLM(observation 蒸馏与 consolidation 折叠共用)────
+agent:
+  # runner:后台调用的 CLI。pi 用 `pi -p`,codex 用 `codex exec`(后续加入)。
+  runner: pi
+  # 模型,格式 provider/model,由所选 runner 解析。
+  model: openai/gpt-5.6-luna
+  # reasoning effort: off | minimal | low | medium | high | xhigh
+  thinking: low
+
+# ── 记忆限额 ────────────────────────────────────────────────
+limits:
+  # observations/ 池的条数上限;超过即触发 consolidation(折叠最旧一批进 MEMORY.md)。
+  maxObservations: 30
+
+  # 单条 observation 正文的字符上限。蒸馏时 LLM 被要求控制在此量级(一句话摘要)。
+  maxObservationChars: 500
+
+  # MEMORY.md 的字符配额。consolidation 写入后超出 → 最旧的 section 移入 journals/(零和)。
+  maxMemoryChars: 20000
+
+  # 每次 consolidation 折叠的最旧 observation 条数(小步慢折叠,避免一次大改写)。
+  consolidateBatchSize: 10

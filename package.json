@@ -1,0 +1,27 @@
+{
+  "name": "knowyou",
+  "version": "0.1.0",
+  "description": "An agent-agnostic background memory layer",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "scan": "node --experimental-strip-types src/cli.ts scan"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bin": {
+    "knowyou": "dist/cli.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  }
+}
