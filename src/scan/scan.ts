@@ -15,6 +15,11 @@ export interface ScanReport {
 	errors: Array<{ file: string; error: string }>;
 }
 
+export interface ScanDeps {
+	/** Distill one increment into raw model output. Injectable for tests. */
+	distill?: (prompt: string) => Promise<string>;
+}
+
 function timestampSlug(now = new Date()): string {
 	const pad = (n: number) => String(n).padStart(2, "0");
 	return (
@@ -37,7 +42,13 @@ function uniqueObservationPath(dir: string, slug: string): string {
  * increment is absorbed (distilled, or the session judged noise) — below-threshold
  * fragments stay pending and roll into the next round.
  */
-export async function runScan(config: KnowyouConfig, home: string, now = new Date()): Promise<ScanReport> {
+export async function runScan(
+	config: KnowyouConfig,
+	home: string,
+	now = new Date(),
+	deps: ScanDeps = {},
+): Promise<ScanReport> {
+	const distill = deps.distill ?? realDistill(config);
 	const report: ScanReport = { filesSeen: 0, unchanged: 0, pending: 0, noise: 0, observations: [], errors: [] };
 	const state = loadState(home);
 	const cutoffMs = now.getTime() - config.scan.windowDays * 86_400_000;
@@ -112,11 +123,7 @@ export async function runScan(config: KnowyouConfig, home: string, now = new Dat
 			// Distill: one LLM call per qualifying increment.
 			const compressed = compressEvents(inc.events);
 			const prompt = buildObservationPrompt(compressed, config.limits.maxObservationChars);
-			const raw = await runAgentPrompt({
-				prompt,
-				model: config.agent.model,
-				thinking: config.agent.thinking,
-			});
+			const raw = await distill(prompt);
 			const { summary, body } = parseObservation(raw, config.limits.maxObservationChars);
 			const obsPath = uniqueObservationPath(observationsDir, timestampSlug(now));
 			writeFileSync(
@@ -148,6 +155,10 @@ export async function runScan(config: KnowyouConfig, home: string, now = new Dat
 
 export function pendingCount(state: ScanState): number {
 	return Object.values(state.sessions).filter((s) => s.pending).length;
+}
+
+function realDistill(config: KnowyouConfig) {
+	return (prompt: string) => runAgentPrompt({ prompt, model: config.agent.model, thinking: config.agent.thinking });
 }
 
 export { storeRoots };
