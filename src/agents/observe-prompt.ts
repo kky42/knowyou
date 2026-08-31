@@ -14,7 +14,9 @@ const TOTAL_CAP = 80_000;
 export function compressEvents(events: MessageEvent[]): string {
 	const lines = events.map((event) => {
 		const cap = PER_MESSAGE_CAP[event.role];
-		const text = event.text.length > cap ? event.text.slice(0, cap) + " …[truncated]" : event.text;
+		let text = event.text.length > cap ? event.text.slice(0, cap) + " …[truncated]" : event.text;
+		// Tool output can carry binary bytes; NUL/control chars crash spawn argv limits.
+		text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
 		return `## ${event.role}\n${text}`;
 	});
 	const joined = lines.join("\n\n");

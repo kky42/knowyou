@@ -102,6 +102,14 @@ describe("adapter on real session files", () => {
 		expect(second.newOffset).toBe(statSync(file).size);
 	});
 
+	it("strips control characters that would crash spawn argv", () => {
+		const out = compressEvents([{ role: "tool", text: "before\u0000after\u0001tail" }]);
+		expect(out).toContain("before");
+		expect(out).toContain("after");
+		expect(out).toContain("tail");
+		expect(out).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/);
+	});
+
 	it("waits on a torn real-format line and absorbs it once the newline lands", () => {
 		const file = join(storeRoot, "torn-test.jsonl");
 		copyFileSync(RICH, file);
