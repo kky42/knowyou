@@ -41,7 +41,7 @@ These records are the session's memory: once the raw conversation is gone, only 
 Output format — nothing else:
 - First line: "SUMMARY: " followed by ONE sentence (max 100 chars) capturing the most important fact of the slice.
 - Then a blank line, then the body: atomic, factual notes, at most {MAX_CHARS} characters.
-- If the slice carries nothing worth remembering, reply with "SUMMARY: no new information" and a body of exactly "-".
+- The no-content option is ONLY for slices that contain no facts, decisions, completions, questions, or preferences at all — pure routine tool chatter. When in doubt, capture. To use it, reply with "SUMMARY: no new information" and a body of exactly "-".
 
 Content rules:
 - Record outcomes, decisions, and open questions — not play-by-play. (BAD: "Read src/auth.ts" GOOD: "Located token validation in src/auth.ts:45")

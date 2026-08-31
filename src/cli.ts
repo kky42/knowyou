@@ -48,6 +48,16 @@ async function cmdRun(home: string): Promise<number> {
 		console.log(`  ${obs.summary}`);
 	}
 	for (const err of observe.errors) console.error(`observe error: ${err.file}: ${err.error}`);
+	const allErrors = [
+		...scan.errors.map((e) => ({ file: e.file, error: e.error })),
+		...observe.errors,
+	];
+	state.lastRun = {
+		at: new Date().toISOString(),
+		ok: allErrors.length === 0,
+		errorCount: allErrors.length,
+		lastError: allErrors[0]?.error,
+	};
 	saveState(home, state);
 
 	// Consolidation (stage B) not yet implemented.

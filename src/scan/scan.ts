@@ -114,9 +114,11 @@ export async function scanPhase(config: KnowyouConfig, state: ScanState, now = n
 					chunks: 0,
 				};
 
-				if (fileUnchanged(entry, info.mtimeMs, info.bytes)) {
-					// Same file as last scan: its last classification still holds.
-					classify(entry.noise ? "noise" : entry.pending ? "pending" : "unchanged");
+				if (fileUnchanged(entry, info.mtimeMs, info.bytes) && !entry.pending) {
+					// Same file as last scan: its last classification still holds. Pending
+					// files are re-evaluated every round (cheap — no LLM) so threshold or
+					// config changes take effect without waiting for new content.
+					classify(entry.noise ? "noise" : "unchanged");
 					continue;
 				}
 
