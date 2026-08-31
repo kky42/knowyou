@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, appendFileSync, existsSync, readdirSync, utimesSync, readFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runScan } from "../src/scan/scan.js";
+import { runScan } from "../src/pipeline.js";
 import { loadState } from "../src/scan/state.js";
 import { mergeConfig } from "../src/config.js";
 

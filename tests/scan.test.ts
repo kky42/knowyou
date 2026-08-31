@@ -6,7 +6,7 @@ import { getAdapter } from "../src/scan/adapters.js";
 
 const pi = getAdapter("pi")!;
 import { fileUnchanged, loadState, saveState } from "../src/scan/state.js";
-import { compressEvents, parseObservation } from "../src/agents/observe-prompt.js";
+import { compressEvents, parseObservation } from "../src/observe/prompts.js";
 import { mergeConfig } from "../src/config.js";
 
 function sessionLine(obj: unknown): string {

@@ -7,7 +7,7 @@ import * as grokAdapter from "./backpass/adapters/grok.js";
 import { contentToEvents, parseJsonLine } from "./backpass/adapters/shared.js";
 import { classifyInteraction, emptyInteractionSignals } from "./backpass/interaction.js";
 import { redactSecrets } from "./redact.js";
-import type { MessageEvent } from "../agents/observe-prompt.js";
+import type { MessageEvent } from "../observe/prompts.js";
 
 /**
  * Glue between vendored backpass adapters (see backpass/README.md) and knowyou's

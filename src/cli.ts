@@ -2,7 +2,8 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { knowyouHome, loadConfig } from "./config.js";
 import { loadState, saveState } from "./scan/state.js";
-import { scanPhase, observePhase } from "./scan/scan.js";
+import { scanPhase } from "./scan/scan.js";
+import { observePhase } from "./observe/observe.js";
 import { renderIndex } from "./render/index-render.js";
 import { runConsolidation, poolFiles } from "./consolidate/consolidate.js";
 
