@@ -36,6 +36,8 @@ agent:
   model: openai/gpt-5.6-luna
   # reasoning effort: off | minimal | low | medium | high | xhigh
   thinking: high
+  # 后台蒸馏的最大并发数:同时最多 N 次模型调用,一个完成立刻补位
+  maxConcurrency: 4
 
 # ── 记忆限额 ────────────────────────────────────────────────
 limits:
@@ -50,3 +52,7 @@ limits:
 
   # 每次 consolidation 折叠的最旧 observation 条数(小步慢折叠,避免一次大改写)。
   consolidateBatchSize: 10
+
+  # 单次 run 最多蒸馏的候选条数(冷启动防过量:token/成本总量控制)。
+  # 未处理的候选下轮自动补上,不丢失。
+  maxObservationsPerRun: 10

@@ -14,12 +14,14 @@ export interface KnowyouConfig {
     redactSecrets: boolean;
     harnesses: HarnessName[];
   };
-  agent: { runner: "pi"; model: string; thinking: string };
+  agent: { runner: "pi"; model: string; thinking: string; maxConcurrency: number };
   limits: {
     maxObservations: number;
     maxObservationChars: number;
     maxMemoryChars: number;
     consolidateBatchSize: number;
+    /** Max candidates distilled in one run — cold-start token/cost control. */
+    maxObservationsPerRun: number;
   };
 }
 
@@ -32,12 +34,13 @@ export const DEFAULTS: KnowyouConfig = {
     redactSecrets: true,
     harnesses: ["pi"],
   },
-  agent: { runner: "pi", model: "openai/gpt-5.6-luna", thinking: "low" },
+  agent: { runner: "pi", model: "openai/gpt-5.6-luna", thinking: "low", maxConcurrency: 4 },
   limits: {
     maxObservations: 30,
     maxObservationChars: 500,
     maxMemoryChars: 20_000,
     consolidateBatchSize: 10,
+    maxObservationsPerRun: 10,
   },
 };
 
@@ -91,12 +94,14 @@ export function mergeConfig(raw: unknown): KnowyouConfig {
       runner: "pi",
       model: mergeString(DEFAULTS.agent.model, agent["model"]),
       thinking: mergeString(DEFAULTS.agent.thinking, agent["thinking"]),
+      maxConcurrency: mergeNumber(DEFAULTS.agent.maxConcurrency, agent["maxConcurrency"]),
     },
     limits: {
       maxObservations: mergeNumber(DEFAULTS.limits.maxObservations, limits["maxObservations"]),
       maxObservationChars: mergeNumber(DEFAULTS.limits.maxObservationChars, limits["maxObservationChars"]),
       maxMemoryChars: mergeNumber(DEFAULTS.limits.maxMemoryChars, limits["maxMemoryChars"]),
       consolidateBatchSize: mergeNumber(DEFAULTS.limits.consolidateBatchSize, limits["consolidateBatchSize"]),
+      maxObservationsPerRun: mergeNumber(DEFAULTS.limits.maxObservationsPerRun, limits["maxObservationsPerRun"]),
     },
   };
 }

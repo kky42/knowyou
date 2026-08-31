@@ -220,3 +220,72 @@ describe("no-new-info protocol", () => {
 		expect(readdirSync(join(home, "observations"))).toHaveLength(0);
 	});
 });
+
+describe("per-run cap and concurrency", () => {
+	function seedSessions(count: number): void {
+		for (let i = 0; i < count; i++) {
+			const f = join(store, `s${i}.jsonl`);
+			writeFileSync(
+				f,
+				line({ type: "session", cwd: "/x", id: `s${i}` }) +
+					message("user", `content ${i} `.repeat(30)) +
+					message("assistant", "y".repeat(120)) +
+					message("user", "second turn"),
+			);
+			// Distinct recent mtimes, oldest first for s0 (inside the 7-day window).
+			const t = Date.now() - 6 * 86_400_000 + i * 1000;
+			utimesSync(f, new Date(t), new Date(t));
+		}
+	}
+
+	it("processes at most maxObservationsPerRun candidates, oldest first, deferring the rest", async () => {
+		seedSessions(5);
+		const capped = mergeConfig({
+			scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7 },
+			limits: { maxObservationsPerRun: 2 },
+		});
+		let calls = 0;
+		const counting = async (prompt: string) => {
+			calls += 1;
+			return `SUMMARY: obs ${calls}\n\n${prompt.slice(-80)}`;
+		};
+
+		const first = await runScan(capped, home, new Date(), { distill: counting });
+		expect(first.observations).toHaveLength(2);
+		expect(first.deferred).toBe(3);
+
+		// Oldest-first: the two oldest files were distilled.
+		const oldest = readFileSync(join(store, "s0.jsonl"), "utf8").includes("content 0");
+		expect(oldest).toBe(true);
+		// Deferred candidates are untouched — their watermarks stay empty.
+		expect(loadState(home).sessions[join(store, "s4.jsonl")]).toBeUndefined();
+
+		// Next run picks up the deferred ones.
+		const second = await runScan(capped, home, new Date(), { distill: counting });
+		expect(second.observations).toHaveLength(2);
+		expect(second.deferred).toBe(1);
+	});
+
+	it("bounds in-flight distillations to agent.maxConcurrency", async () => {
+		seedSessions(6);
+		const limited = mergeConfig({
+			scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7 },
+			agent: { maxConcurrency: 2 },
+			limits: { maxObservationsPerRun: 10 },
+		});
+		let active = 0;
+		let peak = 0;
+		const tracking = async (prompt: string) => {
+			active += 1;
+			peak = Math.max(peak, active);
+			await new Promise((resolve) => setTimeout(resolve, 15));
+			active -= 1;
+			return `SUMMARY: obs\n\n${prompt.slice(-80)}`;
+		};
+
+		const report = await runScan(limited, home, new Date(), { distill: tracking });
+		expect(report.observations).toHaveLength(6);
+		expect(peak).toBeLessThanOrEqual(2);
+		expect(peak).toBeGreaterThan(1); // actually parallel, not serial
+	});
+});

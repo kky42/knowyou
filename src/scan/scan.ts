@@ -52,6 +52,8 @@ export interface ObserveReport {
 	errors: Array<{ file: string; error: string }>;
 	/** Candidates absorbed without an observation — the model reported no new info. */
 	skipped?: number;
+	/** Candidates left for the next run because of maxObservationsPerRun. */
+	deferred?: number;
 }
 
 const EMPTY_COUNTS: Record<FileStatus, number> = {
@@ -199,7 +201,14 @@ export async function observePhase(
 	const observationsDir = join(home, "observations");
 	mkdirSync(observationsDir, { recursive: true });
 
-	for (const candidate of scan.candidates) {
+	// Per-run cap: distill at most maxObservationsPerRun candidates, oldest first (matches
+	// the FIFO consolidation direction). The rest stay candidates — their watermarks are
+	// untouched, so they are re-offered next run.
+	const ordered = [...scan.candidates].sort((a, b) => a.mtimeMs - b.mtimeMs);
+	const selected = ordered.slice(0, config.limits.maxObservationsPerRun);
+	report.deferred = ordered.length - selected.length;
+
+	const processCandidate = async (candidate: ClassifiedFile): Promise<void> => {
 		try {
 			const entry = ensureEntry(state, candidate.path);
 			const compressed = compressEvents(candidate.events ?? []);
@@ -221,7 +230,7 @@ export async function observePhase(
 			if (body.trim() === "-" || body.trim() === "") {
 				state.sessions[candidate.path] = absorbed;
 				report.skipped = (report.skipped ?? 0) + 1;
-				continue;
+				return;
 			}
 			const obsPath = uniqueObservationPath(observationsDir, timestampSlug(now));
 			writeFileSync(
@@ -237,7 +246,22 @@ export async function observePhase(
 				error: error instanceof Error ? error.message : String(error),
 			});
 		}
-	}
+	};
+
+	// Worker pool: at most agent.maxConcurrency distillations in flight; each worker pulls
+	// the next candidate when it finishes. State updates touch disjoint keys, and the
+	// file-write helpers are synchronous, so no locking is needed.
+	const queue = [...selected];
+	let cursor = 0;
+	const worker = async (): Promise<void> => {
+		while (cursor < queue.length) {
+			const candidate = queue[cursor++];
+			if (!candidate) break;
+			await processCandidate(candidate);
+		}
+	};
+	const workerCount = Math.max(1, Math.min(config.agent.maxConcurrency, queue.length));
+	await Promise.all(Array.from({ length: workerCount }, worker));
 
 	// Noise and below-threshold files: bookkeeping only.
 	for (const file of scan.harnesses.flatMap((h) => h.files)) {
@@ -275,6 +299,8 @@ export interface ScanReport {
 	observations: Array<{ file: string; summary: string; chars: number }>;
 	/** Candidates absorbed without an observation — model reported no new info. */
 	skipped?: number;
+	/** Candidates left for the next run because of maxObservationsPerRun. */
+	deferred?: number;
 	errors: Array<{ file: string; error: string }>;
 }
 
@@ -306,6 +332,7 @@ export async function runScan(config: KnowyouConfig, home: string, now = new Dat
 		noise: counts["noise"] ?? 0,
 		observations: observe.observations,
 		skipped: observe.skipped,
+		deferred: observe.deferred,
 		errors: allErrors,
 	};
 }

@@ -59,6 +59,7 @@ async function cmdRun(home: string): Promise<number> {
 		lastError: allErrors[0]?.error,
 	};
 	saveState(home, state);
+	if (observe.deferred) console.log(`deferred: ${observe.deferred} candidate(s) left for the next run (per-run cap)`);
 
 	// Consolidation (stage B) not yet implemented.
 	const obsDir = join(home, "observations");
