@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { looksLikeSession, readIncrement } from "../src/scan/pi-adapter.js";
+import { compressEvents } from "../src/agents/observe-prompt.js";
 import { runScan } from "../src/scan/scan.js";
 import { loadState } from "../src/scan/state.js";
 import { mergeConfig } from "../src/config.js";
