@@ -27,7 +27,7 @@ export const DEFAULTS: KnowyouConfig = {
   schedule: { updateEverySeconds: 1800 },
   scan: {
     windowDays: 7,
-    minNewChars: 20_000,
+    minNewChars: 40_000, // ~10K tokens
     minUserTurns: 2,
     redactSecrets: true,
     harnesses: ["pi"],

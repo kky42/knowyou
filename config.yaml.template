@@ -13,9 +13,10 @@ scan:
   windowDays: 7
 
   # 未扫增量的消息文本(只计 user/assistant/toolResult,不含系统提示/scaffolding)
+  # 单位是字符;40000 字符约 10K token
   # 超过此字符数才值得调 LLM 蒸馏出一条 observation;不足则只推进水位,碎片滚入下一轮。
   # 调大 = 更省调用但记忆更迟;调小 = 更及时但调用更频繁。
-  minNewChars: 20000
+  minNewChars: 40000
 
   # user 回合数低于此值的会话视为噪声(一次性测试等),不蒸馏。
   minUserTurns: 2

@@ -132,13 +132,13 @@ describe("observation parsing", () => {
 describe("config merge", () => {
 	it("keeps defaults on garbage and overrides on valid values", () => {
 		const defaults = mergeConfig(undefined);
-		expect(defaults.scan.minNewChars).toBe(20_000);
+		expect(defaults.scan.minNewChars).toBe(40_000);
 		const merged = mergeConfig({ scan: { minNewChars: 5 }, limits: { maxMemoryChars: 999 } });
 		expect(merged.scan.minNewChars).toBe(5);
 		expect(merged.limits.maxMemoryChars).toBe(999);
 		expect(merged.limits.maxObservations).toBe(30);
 		const bad = mergeConfig({ scan: { minNewChars: "lots" }, agent: { model: "" } });
-		expect(bad.scan.minNewChars).toBe(20_000);
+		expect(bad.scan.minNewChars).toBe(40_000);
 		expect(bad.agent.model).toBe("openai/gpt-5.6-luna");
 	});
 });
