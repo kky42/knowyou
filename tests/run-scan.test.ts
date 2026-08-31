@@ -199,3 +199,24 @@ describe("last-run bookkeeping", () => {
 		expect(state.observations ?? {}).toBeDefined();
 	});
 });
+
+describe("no-new-info protocol", () => {
+	it("absorbs the increment without writing an observation when the model reports nothing new", async () => {
+		writeSession(
+			line({ type: "session", cwd: "/x", id: "s1" }) +
+				message("user", "x".repeat(300)) +
+				message("assistant", "y".repeat(300)) +
+				message("user", "second turn"),
+		);
+		const nothingNew = async () => "SUMMARY: no new information\n\n-";
+		const report = await runScan(CONFIG, home, new Date(), { distill: nothingNew });
+
+		expect(report.observations).toHaveLength(0);
+		expect(report.skipped).toBe(1);
+		// Watermark advanced — the increment is consumed even though nothing was recorded.
+		const entry = loadState(home).sessions[sessionFile];
+		expect(entry?.offset).toBe(entry?.bytes);
+		expect(existsSync(join(home, "observations"))).toBe(true);
+		expect(readdirSync(join(home, "observations"))).toHaveLength(0);
+	});
+});

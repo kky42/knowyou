@@ -50,6 +50,8 @@ export interface ScanResult {
 export interface ObserveReport {
 	observations: Array<{ file: string; summary: string; chars: number }>;
 	errors: Array<{ file: string; error: string }>;
+	/** Candidates absorbed without an observation — the model reported no new info. */
+	skipped?: number;
 }
 
 const EMPTY_COUNTS: Record<FileStatus, number> = {
@@ -202,13 +204,7 @@ export async function observePhase(
 			const prompt = buildObservationPrompt(compressed, config.limits.maxObservationChars);
 			const raw = await distill(prompt);
 			const { summary, body } = parseObservation(raw, config.limits.maxObservationChars);
-			const obsPath = uniqueObservationPath(observationsDir, timestampSlug(now));
-			writeFileSync(
-				obsPath,
-				`---\ncreated: ${now.toISOString()}\nsource: ${candidate.path}\n` +
-					`range: ${entry.offset}-${candidate.newOffset}\n---\n${summary}\n\n${body}\n`,
-			);
-			state.sessions[candidate.path] = {
+			const absorbed = {
 				...entry,
 				bytes: candidate.bytes,
 				mtimeMs: candidate.mtimeMs,
@@ -218,6 +214,20 @@ export async function observePhase(
 				pending: false,
 				chunks: entry.chunks + 1,
 			};
+			// The prompt's no-new-info protocol: "-" body means nothing worth remembering.
+			// The increment is still absorbed (watermark advances) but no file is written.
+			if (body.trim() === "-" || body.trim() === "") {
+				state.sessions[candidate.path] = absorbed;
+				report.skipped = (report.skipped ?? 0) + 1;
+				continue;
+			}
+			const obsPath = uniqueObservationPath(observationsDir, timestampSlug(now));
+			writeFileSync(
+				obsPath,
+				`---\ncreated: ${now.toISOString()}\nsource: ${candidate.path}\n` +
+					`range: ${entry.offset}-${candidate.newOffset}\n---\n${summary}\n\n${body}\n`,
+			);
+			state.sessions[candidate.path] = absorbed;
 			report.observations.push({ file: obsPath, summary, chars: body.length });
 		} catch (error) {
 			report.errors.push({
@@ -261,6 +271,8 @@ export interface ScanReport {
 	pending: number;
 	noise: number;
 	observations: Array<{ file: string; summary: string; chars: number }>;
+	/** Candidates absorbed without an observation — model reported no new info. */
+	skipped?: number;
 	errors: Array<{ file: string; error: string }>;
 }
 
@@ -291,6 +303,7 @@ export async function runScan(config: KnowyouConfig, home: string, now = new Dat
 		pending: counts["pending"] ?? 0,
 		noise: counts["noise"] ?? 0,
 		observations: observe.observations,
+		skipped: observe.skipped,
 		errors: allErrors,
 	};
 }

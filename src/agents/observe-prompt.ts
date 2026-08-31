@@ -34,14 +34,24 @@ export function compressEvents(events: MessageEvent[]): string {
 	return kept.join("\n\n");
 }
 
-const PROMPT_TEMPLATE = `You distill observations from a slice of an AI coding-agent session transcript. The slice may be a continuation of earlier context you cannot see.
+const PROMPT_TEMPLATE = `You distill an observation from a slice of an AI coding-agent session transcript. The slice may be a continuation of earlier context you cannot see.
 
-Rules:
-- First line: "SUMMARY: " followed by ONE sentence (max 100 chars) capturing the most important thing in this slice.
-- Then a blank line, then the body: factual, atomic notes — what was done, decided, learned, or is in progress.
-- Record outcomes and decisions, not play-by-play. Conflicting statements: the latest one reflects current state.
-- Body must be at most {MAX_CHARS} characters. Write in the language the conversation uses.
-- Never include API keys, tokens, or credentials. Never speculate beyond the transcript.
+These records are the session's memory: once the raw conversation is gone, only what you capture is remembered, and anything you distort is remembered wrong.
+
+Output format — nothing else:
+- First line: "SUMMARY: " followed by ONE sentence (max 100 chars) capturing the most important fact of the slice.
+- Then a blank line, then the body: atomic, factual notes, at most {MAX_CHARS} characters.
+- If the slice carries nothing worth remembering, reply with "SUMMARY: no new information" and a body of exactly "-".
+
+Content rules:
+- Record outcomes, decisions, and open questions — not play-by-play. (BAD: "Read src/auth.ts" GOOD: "Located token validation in src/auth.ts:45")
+- Split compound statements: one fact per line. (BAD: "User is switching to pnpm and wants tests updated" GOOD: two lines, one per fact)
+- When the user states something, record it as an assertion, not a question. (BAD: "User wondered if they use Postgres" GOOD: "User stated they use Postgres")
+- Frame state changes as supersession so the old state stays explicit. (BAD: "User prefers React Query now" GOOD: "User will use React Query (switching from SWR)")
+- Mark completions explicitly: "completed:", "resolved:", "confirmed working". (BAD: "Wrote the login handler" GOOD: "completed: login handler at src/auth/login.ts; tests pass")
+- Use precise verbs. (BAD: "got the library" GOOD: "installed zod via pnpm")
+- When statements conflict, the latest reflects current state.
+- Write in the conversation's language. Never include API keys, tokens, or credentials. Never speculate beyond the transcript.
 
 Transcript slice:
 ---
