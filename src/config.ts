@@ -14,7 +14,7 @@ export interface KnowyouConfig {
     redactSecrets: boolean;
     harnesses: HarnessName[];
   };
-  agent: { runner: "pi"; model: string; thinking: string; maxConcurrency: number };
+  agent: { runner: "pi"; model?: string; thinking?: string; maxConcurrency: number };
   limits: {
     maxObservations: number;
     maxObservationChars: number;
@@ -32,9 +32,9 @@ export const DEFAULTS: KnowyouConfig = {
     minNewChars: 40_000, // ~10K tokens
     minUserTurns: 2,
     redactSecrets: true,
-    harnesses: ["pi"],
+    harnesses: ["pi", "codex", "claude", "grok"],
   },
-  agent: { runner: "pi", model: "openai/gpt-5.6-luna", thinking: "low", maxConcurrency: 4 },
+  agent: { runner: "pi", maxConcurrency: 4 },
   limits: {
     maxObservations: 30,
     maxObservationChars: 500,
@@ -64,8 +64,8 @@ function mergeBool(base: boolean, value: unknown): boolean {
   return typeof value === "boolean" ? value : base;
 }
 
-function mergeString(base: string, value: unknown): string {
-  return typeof value === "string" && value.trim().length > 0 ? value : base;
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 /** Deep-merge user config over defaults; unknown keys and bad types fall back to defaults. */
@@ -92,8 +92,8 @@ export function mergeConfig(raw: unknown): KnowyouConfig {
     },
     agent: {
       runner: "pi",
-      model: mergeString(DEFAULTS.agent.model, agent["model"]),
-      thinking: mergeString(DEFAULTS.agent.thinking, agent["thinking"]),
+      model: optionalString(agent["model"]),
+      thinking: optionalString(agent["thinking"]),
       maxConcurrency: mergeNumber(DEFAULTS.agent.maxConcurrency, agent["maxConcurrency"]),
     },
     limits: {

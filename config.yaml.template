@@ -24,18 +24,21 @@ scan:
   # 蒸馏前对消息文本做 secrets 脱敏(API key、token 等)。
   redactSecrets: true
 
-  # 启用的 harness 适配器。v1 只有 pi;codex/claude 适配器加入后在这里打开。
+  # 可选。省略时默认扫描全部支持的 harness;填写后覆盖默认列表。
   harnesses:
     - pi
+    - codex
+    - claude
+    - grok
 
 # ── 后台 LLM(observation 蒸馏与 consolidation 折叠共用)────
 agent:
   # runner:后台调用的 CLI。pi 用 `pi -p`,codex 用 `codex exec`(后续加入)。
   runner: pi
-  # 模型,格式 provider/model,由所选 runner 解析。
-  model: openai/gpt-5.6-luna
-  # reasoning effort: off | minimal | low | medium | high | xhigh
-  thinking: high
+  # 模型,格式 provider/model,由所选 runner 解析。留空则使用 Pi 的默认模型。
+  # model: provider/model
+  # reasoning effort: off | minimal | low | medium | high | xhigh | max。留空则使用 Pi 默认值。
+  # thinking: medium
   # 后台蒸馏的最大并发数:同时最多 N 次模型调用,一个完成立刻补位
   maxConcurrency: 4
 

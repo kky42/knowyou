@@ -91,8 +91,8 @@ scan:
 
 agent:                          # 后台 LLM 用的 runner
   runner: pi                    # pi | codex(pi 用 `pi -p`,codex 用 `codex exec`,后面加)
-  model: <provider/model>
-  thinking: low
+  model: <provider/model>       # 可选;省略则使用 Pi 的默认模型
+  thinking: low                 # 可选;省略则使用 Pi 的默认 reasoning effort
 
 limits:
   maxObservations: 30           # 池上限;超过触发 consolidation
@@ -119,8 +119,9 @@ enumerate 层完成,窗口外文件根本不返回)、字节偏移增量读取�
 glue 层和管线编排。
 
 - **适配器三件套**:每个 harness 实现 `enumerate()`(枚举 session 文件: path/mtimeMs/bytes)、
-  `classify()`(只读文件头几行拿 cwd/id,便宜)、`read()`(解析成消息事件)。v1 只做 pi
-  (`~/.pi/agent/sessions/<escaped-cwd>/*.jsonl`);其余 harness 后续逐个加
+  `classify()`(只读文件头几行拿 cwd/id,便宜)、`read()`(解析成消息事件)。目前支持 pi、codex、
+  claude、grok;默认扫描全部,配置 `scan.harnesses` 后覆盖默认列表
+  (`~/.pi/agent/sessions/<escaped-cwd>/*.jsonl` 仅是 pi 的存储示例)
 - **scan-cache**:`.state.json` 以文件路径为键,未变化的文件 O(1) 跳过
 - **fail-soft**:某个 harness 存储缺失/格式漂移 → 命名警告后跳过,整轮不失败
 - **self-exclusion**:knowyou 自己的 runner(pi -p / codex exec)产生的 session
@@ -194,12 +195,12 @@ glue 层和管线编排。
 
 ## v1 范围与非目标
 
-**v1 做**:pi 适配器、全局层(~/.knowyou)、三步管线、config.yaml、四行 AGENTS.md 集成。
+**v1 做**:pi/codex/claude/grok 适配器、全局层(~/.knowyou)、三步管线、config.yaml、四行 AGENTS.md 集成。
 
 **明确不做(v1)**:
 - 项目层(`<project>/.knowyou/` + STATUS.md)——暂不加入,机制留好复用空间
 - 多 runner(先 pi;codex 适配加起来很快,但 v1 不做)
 - 跨项目佐证门槛、recall 语义检索、向量库、daemon/socket、agent 会话内写入
 
-**后续路线**:codex/claude 适配器 → 项目层(复用同一套管线,加 STATUS.md)→
-佐证门槛(全局池要求 ≥2 独立 session)→ `knowyou search`(语义检索 journals)。
+**后续路线**:项目层(复用同一套管线,加 STATUS.md)→佐证门槛(全局池要求 ≥2 独立 session)→
+`knowyou search`(语义检索 journals)。

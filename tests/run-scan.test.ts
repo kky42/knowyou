@@ -21,7 +21,7 @@ let sessionFile: string;
 let savedEnv: string | undefined;
 
 const CONFIG = mergeConfig({
-	scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7 },
+	scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
 	limits: { maxObservationChars: 500 },
 });
 
@@ -249,7 +249,7 @@ describe("per-run cap and concurrency", () => {
 	it("processes at most maxObservationsPerRun candidates, oldest first, deferring the rest", async () => {
 		seedSessions(5);
 		const capped = mergeConfig({
-			scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7 },
+			scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
 			limits: { maxObservationsPerRun: 2 },
 		});
 		let calls = 0;
@@ -277,7 +277,7 @@ describe("per-run cap and concurrency", () => {
 	it("bounds in-flight distillations to agent.maxConcurrency", async () => {
 		seedSessions(6);
 		const limited = mergeConfig({
-			scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7 },
+			scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
 			agent: { maxConcurrency: 2 },
 			limits: { maxObservationsPerRun: 10 },
 		});

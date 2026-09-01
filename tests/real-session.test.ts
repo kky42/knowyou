@@ -134,7 +134,7 @@ describe("adapter on real session files", () => {
 
 describe("scan pipeline on real session files", () => {
 	const CONFIG = mergeConfig({
-		scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7 },
+		scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
 		limits: { maxObservationChars: 500 },
 	});
 	// Echo the chunk itself (not the surrounding prompt template) so assertions can

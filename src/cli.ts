@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { knowyouHome, loadConfig } from "./config.js";
@@ -14,10 +16,10 @@ const USAGE = `knowyou — an agent-agnostic background memory layer
 
 Usage:
   knowyou scan     dry run: classify session files per harness (no LLM, no writes)
-  knowyou run      real pipeline: scan → observe → consolidate(TODO) → render
+  knowyou run      real pipeline: scan → observe → consolidate → render
   knowyou status   pool/quota/watermark overview
-  knowyou start    register the periodic job (not implemented yet)
-  knowyou stop     unregister the periodic job (not implemented yet)`;
+  knowyou start    register the periodic job
+  knowyou stop     unregister the periodic job`;
 
 function localLastRun(value: string): string {
 	const date = new Date(value);

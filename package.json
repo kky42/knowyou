@@ -1,11 +1,20 @@
 {
   "name": "knowyou",
   "version": "0.1.0",
-  "description": "An agent-agnostic background memory layer",
-  "main": "index.js",
+  "description": "A small, local memory layer for AI agents",
+  "files": [
+    "dist",
+    "README.md",
+    "config.yaml.template",
+    "assets"
+  ],
+  "repository": "github:kky42/knowyou",
+  "homepage": "https://github.com/kky42/knowyou",
+  "bugs": "https://github.com/kky42/knowyou/issues",
   "scripts": {
     "test": "vitest run",
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "scan": "node --experimental-strip-types src/cli.ts scan"
   },

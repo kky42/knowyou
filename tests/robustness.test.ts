@@ -17,7 +17,7 @@ let sessionFile: string;
 let savedEnv: string | undefined;
 
 const CONFIG = mergeConfig({
-	scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7 },
+	scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
 	limits: { maxObservationChars: 500 },
 });
 

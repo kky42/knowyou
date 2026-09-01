@@ -7,14 +7,10 @@ import { spawn } from "node:child_process";
  */
 export async function runAgentPrompt(opts: {
 	prompt: string;
-	model: string; // "provider/model"
-	thinking: string;
+	model?: string; // "provider/model"; omit to use pi's configured default
+	thinking?: string; // omit to use pi's configured default
 	timeoutMs?: number;
 }): Promise<string> {
-	const slash = opts.model.indexOf("/");
-	const provider = slash > 0 ? opts.model.slice(0, slash) : undefined;
-	const modelId = slash > 0 ? opts.model.slice(slash + 1) : opts.model;
-
 	const args = [
 		"-p",
 		"--no-session",
@@ -29,8 +25,15 @@ export async function runAgentPrompt(opts: {
 		"--system-prompt",
 		"You are a text-processing engine. Follow the user's instructions exactly and output only what they specify.",
 	];
-	if (provider) args.push("--provider", provider);
-	args.push("--model", modelId, "--thinking", opts.thinking, "--", opts.prompt);
+	if (opts.model) {
+		const slash = opts.model.indexOf("/");
+		const provider = slash > 0 ? opts.model.slice(0, slash) : undefined;
+		const modelId = slash > 0 ? opts.model.slice(slash + 1) : opts.model;
+		if (provider) args.push("--provider", provider);
+		args.push("--model", modelId);
+	}
+	if (opts.thinking) args.push("--thinking", opts.thinking);
+	args.push("--", opts.prompt);
 
 	return new Promise<string>((resolve, reject) => {
 		// pi -p reads stdin to EOF when stdin is not a TTY; a default open pipe would hang

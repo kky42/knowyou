@@ -133,12 +133,19 @@ describe("config merge", () => {
 	it("keeps defaults on garbage and overrides on valid values", () => {
 		const defaults = mergeConfig(undefined);
 		expect(defaults.scan.minNewChars).toBe(40_000);
+		expect(defaults.scan.harnesses).toEqual(["pi", "codex", "claude", "grok"]);
 		const merged = mergeConfig({ scan: { minNewChars: 5 }, limits: { maxMemoryChars: 999 } });
 		expect(merged.scan.minNewChars).toBe(5);
+		const selected = mergeConfig({ scan: { harnesses: ["codex"] } });
+		expect(selected.scan.harnesses).toEqual(["codex"]);
 		expect(merged.limits.maxMemoryChars).toBe(999);
 		expect(merged.limits.maxObservations).toBe(30);
 		const bad = mergeConfig({ scan: { minNewChars: "lots" }, agent: { model: "" } });
 		expect(bad.scan.minNewChars).toBe(40_000);
-		expect(bad.agent.model).toBe("openai/gpt-5.6-luna");
+		expect(bad.agent.model).toBeUndefined();
+		expect(bad.agent.thinking).toBeUndefined();
+		const configured = mergeConfig({ agent: { model: "openai/gpt-5.6-luna", thinking: "high" } });
+		expect(configured.agent.model).toBe("openai/gpt-5.6-luna");
+		expect(configured.agent.thinking).toBe("high");
 	});
 });
