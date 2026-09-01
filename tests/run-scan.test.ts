@@ -21,8 +21,8 @@ let sessionFile: string;
 let savedEnv: string | undefined;
 
 const CONFIG = mergeConfig({
-	scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
-	limits: { maxObservationChars: 500 },
+	scan: { minNewTokens: 25, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
+	observe: { maxObservationChars: 500 },
 });
 
 function writeSession(content: string): void {
@@ -127,6 +127,38 @@ describe("runScan orchestration filters", () => {
 		expect(obsText).toContain("xxx");
 	});
 
+	it("batches multiple raw slices from one session into one observation", async () => {
+		const sliced = mergeConfig({
+			scan: { minNewTokens: 40, maxNewTokens: 80, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
+			observe: { batchSize: 4, maxSlicesPerRun: 10 },
+		});
+		writeSession(
+			line({ type: "session", cwd: "/x", id: "s1" }) +
+				message("user", "u".repeat(120)) +
+				message("assistant", "a".repeat(120)) +
+				message("user", "v".repeat(120)) +
+				message("assistant", "b".repeat(120)) +
+				message("user", "w".repeat(120)) +
+				message("assistant", "c".repeat(120)),
+		);
+		let calls = 0;
+		let observedPrompt = "";
+		const report = await runScan(sliced, home, new Date(), {
+			distill: async (prompt) => {
+				calls += 1;
+				observedPrompt = prompt;
+				return "SUMMARY: batched\n\nthree related slices";
+			},
+		});
+		expect(report.observations).toHaveLength(1);
+		expect(calls).toBe(1);
+		expect(observedPrompt).toContain("slice 0");
+		expect(observedPrompt).toContain("slice 1");
+		expect(observedPrompt).toContain("slice 2");
+		const state = loadState(home);
+		expect(state.sessions[sessionFile]?.offset).toBe(state.sessions[sessionFile]?.bytes);
+	});
+
 	it("skips unchanged files on rescan without re-distilling", async () => {
 		writeSession(
 			line({ type: "session", cwd: "/x", id: "s1" }) +
@@ -229,7 +261,7 @@ describe("no-new-info protocol", () => {
 	});
 });
 
-describe("per-run cap and concurrency", () => {
+describe("per-run cap and serial batching", () => {
 	function seedSessions(count: number): void {
 		for (let i = 0; i < count; i++) {
 			const f = join(store, `s${i}.jsonl`);
@@ -246,11 +278,11 @@ describe("per-run cap and concurrency", () => {
 		}
 	}
 
-	it("processes at most maxObservationsPerRun candidates, oldest first, deferring the rest", async () => {
+	it("processes at most maxSlicesPerRun slices, oldest first, deferring the rest", async () => {
 		seedSessions(5);
 		const capped = mergeConfig({
-			scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
-			limits: { maxObservationsPerRun: 2 },
+			scan: { minNewTokens: 25, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
+			observe: { maxSlicesPerRun: 2, batchSize: 1 },
 		});
 		let calls = 0;
 		const counting = async (prompt: string) => {
@@ -274,16 +306,17 @@ describe("per-run cap and concurrency", () => {
 		expect(second.deferred).toBe(1);
 	});
 
-	it("bounds in-flight distillations to agent.maxConcurrency", async () => {
+	it("batches up to four slices and processes batches serially", async () => {
 		seedSessions(6);
 		const limited = mergeConfig({
-			scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
-			agent: { maxConcurrency: 2 },
-			limits: { maxObservationsPerRun: 10 },
+			scan: { minNewTokens: 25, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
+			observe: { maxSlicesPerRun: 10, batchSize: 4 },
 		});
 		let active = 0;
 		let peak = 0;
+		let calls = 0;
 		const tracking = async (prompt: string) => {
+			calls += 1;
 			active += 1;
 			peak = Math.max(peak, active);
 			await new Promise((resolve) => setTimeout(resolve, 15));
@@ -292,8 +325,8 @@ describe("per-run cap and concurrency", () => {
 		};
 
 		const report = await runScan(limited, home, new Date(), { distill: tracking });
-		expect(report.observations).toHaveLength(6);
-		expect(peak).toBeLessThanOrEqual(2);
-		expect(peak).toBeGreaterThan(1); // actually parallel, not serial
+		expect(report.observations).toHaveLength(2);
+		expect(calls).toBe(2);
+		expect(peak).toBe(1);
 	});
 });

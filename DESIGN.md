@@ -85,18 +85,23 @@ schedule:
 
 scan:
   windowDays: 7                 # 只看最近 7 天的 session;更早的一律忽略
-  minNewChars: 20000            # 未扫增量的消息文本(不含系统提示/scaffolding)超过此值才蒸馏
+  minNewTokens: 20000           # 未扫增量的估算 token 数,按 UTF-8 bytes/4
+  maxNewTokens: 80000           # 单个 raw slice 的上限,在 scan 阶段切分
   minUserTurns: 2               # 过滤一次性/噪声会话
   redactSecrets: true
 
+observe:
+  batchSize: 4                  # 最多四个 compacted slice 一次调用,串行处理
+  maxObservationChars: 500      # 单条 observation 正文上限
+  maxSlicesPerRun: 10           # 单轮冷启动保护;剩余 slice 下轮处理
+
 agent:                          # 后台 LLM 用的 runner
-  runner: pi                    # pi | codex(pi 用 `pi -p`,codex 用 `codex exec`,后面加)
+  runner: pi                    # 后台摘要与折叠均由 Pi 执行
   model: <provider/model>       # 可选;省略则使用 Pi 的默认模型
   thinking: low                 # 可选;省略则使用 Pi 的默认 reasoning effort
 
-limits:
-  maxObservations: 30           # 池上限;超过触发 consolidation
-  maxObservationChars: 500      # 单条 observation 正文的字符上限(~一句话摘要量级)
+consolidate:
+  triggerObservations: 30       # 池达到此条数时触发单次全池折叠
   maxMemoryChars: 20000         # MEMORY.md 配额(只按字符,不按行)
 ```
 
@@ -134,22 +139,26 @@ glue 层和管线编排。
   pi session 是 append-only JSONL,追加安全)
 - `size > offset` → 读 `[offset, EOF)`,对齐到最后的完整 `\n`,只解析这段新行;
   `size < offset` → 文件被截断/重写,offset 归零整读
-- **计入口径**:只统计新增部分中 user/assistant/toolResult 消息的文本字符
-  (系统提示词、harness scaffolding、custom 条目一律不计),tokens ≈ chars/4 仅作展示
-- **触发阈值**:未扫增量(按上述口径)超过 `minNewChars` 才蒸馏并产出一条 observation;
-  不足则只推进水位,不调 LLM。低于阈值的碎片会累积到下一轮一起算
-- **预处理**:蒸馏前做确定性压缩(tool-call 折行、截断输出、redact secrets),典型压缩 95%+
+- **计入口径**:只统计新增部分中规范化 session 事件的 UTF-8 bytes,估算 token = bytes/4;
+  系统提示词、harness scaffolding、custom 条目一律不计
+- **raw slicing**:未扫增量达到 `minNewTokens` 后,按完整 JSONL record 切成最多
+  `maxNewTokens` 的 slice。一个 session 可以产生多个 slice;尾部不足阈值的部分保留到下轮
+- **水位安全**:只有对应 slice 的 observe 调用成功后才推进其 byte offset;失败会重试,
+  不会跳过同一 session 后续 slice
+- **预处理**:复用 backpass 的确定性压缩策略(tool-call 折行、截断输出、删除 boilerplate、
+  redact secrets)。压缩率 95%+ 是典型值,不是硬保证
 
 ### (A) Observation
 
-- 对每个合格 chunk 调一次 LLM(runner: `pi -p`,prompt 借鉴 om 的 observer prompt):
-  从原始对话 chunk 蒸馏出原子记忆条目
-- 产出写入 `observations/YYYY-MM-DD-hh-mm-ss.md`,同步更新 `.state.json` 水位
+- 每次最多把 `observe.batchSize` 个 compacted slice 合成一个 prompt,按 session 邻接和时间邻近
+  优先分组,一次调用 LLM(runner: `pi -p`),所有 batch 串行处理
+- 产出写入 `observations/YYYY-MM-DD-hh-mm-ss.md`,成功后同步更新 batch 中每个 slice 的水位
+- 一个 batch 失败时,相关 session 的后续 slice 不会越过失败点
 
 ### (B) Consolidation
 
-- 触发条件(机械判断):`observations/` 条数 > maxObservations
-- 动作:**纯按年龄 FIFO**,取最旧的一批(约 10 条)调 LLM(借鉴 om 的 consolidator prompt)
+- 触发条件(机械判断):`observations/` 条数 >= `consolidate.triggerObservations`,或 MEMORY 超配额
+- 动作:**纯按年龄 FIFO**,把整个 observation pool 一次调 LLM(借鉴 om 的 consolidator prompt)
   折叠进 MEMORY.md:
   - 与已有 section 合并、去重;冲突时最新覆盖旧的(newest-wins)
   - preference/fact/decision 一视同仁——只要是必要的,就该进长期记忆,所以不分类型分流

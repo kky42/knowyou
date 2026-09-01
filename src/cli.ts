@@ -67,7 +67,7 @@ async function runPipeline(home: string): Promise<number> {
 
 	const scan = await scanPhase(config, state);
 	const candidates = scan.harnesses.reduce((a, h) => a + h.counts["candidate"], 0);
-	console.log(`scan: ${candidates} candidate(s), ${scan.harnesses.reduce((a, h) => a + h.counts["pending"], 0)} pending, no LLM calls yet`);
+	console.log(`scan: ${candidates} candidate session(s), ${scan.candidates.length} raw slice(s), ${scan.harnesses.reduce((a, h) => a + h.counts["pending"], 0)} pending, no LLM calls yet`);
 	if (scan.errors.length > 0) for (const err of scan.errors) console.error(`scan error: ${err.file || err.harness}: ${err.error}`);
 
 	const observe = await observePhase(config, home, state, scan);
@@ -92,14 +92,14 @@ async function runPipeline(home: string): Promise<number> {
 	const consolidation = await runConsolidation(config, home);
 	if (consolidation.triggered) {
 		console.log(
-			`consolidate: folded ${consolidation.folded} observation(s) — MEMORY.md ${consolidation.memoryChars}/${config.limits.maxMemoryChars} chars` +
+			`consolidate: folded ${consolidation.folded} observation(s) — MEMORY.md ${consolidation.memoryChars}/${config.consolidate.maxMemoryChars} chars` +
 				(consolidation.overQuota ? " (over quota — will shrink next round)" : ""),
 		);
 		if (consolidation.journalFile) console.log(`journal: ${consolidation.journalFile}`);
 		for (const err of consolidation.errors) console.error(`consolidate error: ${err}`);
 	} else {
 		const pool = poolFiles(home).length;
-		console.log(`consolidate: not triggered (pool ${pool}/${config.limits.maxObservations})`);
+		console.log(`consolidate: not triggered (pool ${pool}/${config.consolidate.triggerObservations})`);
 	}
 	saveState(home, state);
 
@@ -125,10 +125,10 @@ async function main(argv: string[]): Promise<number> {
 		console.log(`tracked sessions: ${sessions.length} (pending: ${pending}, noise: ${noise})`);
 		const obsDir = join(home, "observations");
 		const obsCount = existsSync(obsDir) ? readdirSync(obsDir).filter((f) => f.endsWith(".md")).length : 0;
-		console.log(`observations: ${obsCount}/${config.limits.maxObservations}`);
+		console.log(`observations: ${obsCount}/${config.consolidate.triggerObservations}`);
 		const memoryFile = join(home, "MEMORY.md");
 		const memoryChars = existsSync(memoryFile) ? statSync(memoryFile).size : 0;
-		console.log(`MEMORY.md: ${memoryChars}/${config.limits.maxMemoryChars} chars`);
+		console.log(`MEMORY.md: ${memoryChars}/${config.consolidate.maxMemoryChars} chars`);
 		if (state.lastRun) {
 			const lr = state.lastRun;
 			console.log(

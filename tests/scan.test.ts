@@ -3,10 +3,12 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, appendFileSync, readFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAdapter } from "../src/scan/adapters.js";
+import { splitScanSlices } from "../src/scan/scan.js";
 
 const pi = getAdapter("pi")!;
 import { fileUnchanged, loadState, saveState } from "../src/scan/state.js";
-import { chunkEvents, parseObservation } from "../src/observe/prompts.js";
+import { parseObservation } from "../src/observe/prompts.js";
+import { estimateTokensFromBytes } from "../src/tokens.js";
 import { mergeConfig } from "../src/config.js";
 
 function sessionLine(obj: unknown): string {
@@ -38,6 +40,7 @@ describe("pi adapter: increment reading", () => {
 		const inc = pi.readIncrement(file, 0, false);
 		expect(inc.userTurns).toBe(1);
 		expect(inc.newChars).toBeGreaterThan(500);
+		expect(inc.newTokens).toBe(estimateTokensFromBytes(inc.newBytes));
 		expect(inc.events).toHaveLength(2);
 		expect(inc.events[0]?.role).toBe("user");
 		expect(inc.newOffset).toBe(Buffer.byteLength(readFileSync(file, "utf8")));
@@ -60,6 +63,22 @@ describe("pi adapter: increment reading", () => {
 		expect(second.events).toHaveLength(1);
 		expect(second.events[0]?.text).toContain("follow-up");
 		expect(second.newOffset).toBe(Buffer.byteLength(readFileSync(file, "utf8")));
+	});
+
+	it("keeps a tool call with its later result and intervening lines", () => {
+		const withTool = join(dir, "tool.jsonl");
+		writeFileSync(
+			withTool,
+			sessionLine({ type: "session", cwd: "/tmp/x", id: "tool" }) +
+				sessionLine({ type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "cat", arguments: { path: "README.md" } }] } }) +
+				message("user", "while the tool runs") +
+				sessionLine({ type: "message", message: { role: "toolResult", content: [{ type: "toolResult", tool_use_id: "call-1", content: "README contents" }] } }),
+		);
+		const inc = pi.readIncrement(withTool, 0, false);
+		const tool = inc.events.find((event) => event.kind === "tool");
+		const user = inc.events.find((event) => event.role === "user");
+		expect(tool?.result).toBe("README contents");
+		expect(tool?.endOffset).toBe(user?.endOffset);
 	});
 
 	it("excludes thinking blocks and non-message entries from the count", () => {
@@ -115,6 +134,47 @@ describe("state watermarks", () => {
 	});
 });
 
+describe("raw token-bounded scan slices", () => {
+	it("splits at complete event lines and preserves byte ranges", () => {
+		const events = [
+			{ kind: "message" as const, role: "user" as const, text: "a".repeat(200), endOffset: 100 },
+			{ kind: "message" as const, role: "assistant" as const, text: "b".repeat(200), endOffset: 200 },
+			{ kind: "message" as const, role: "user" as const, text: "c".repeat(200), endOffset: 300 },
+		];
+		const slices = splitScanSlices(events, 0, 300, 80);
+		expect(slices).toHaveLength(3);
+		expect(slices.map((slice) => [slice.startOffset, slice.endOffset])).toEqual([
+			[0, 100],
+			[100, 200],
+			[200, 300],
+		]);
+		expect(slices.every((slice) => slice.rawTokens >= 50 && slice.rawTokens <= 80)).toBe(true);
+	});
+
+	it("keeps multiple events from one JSONL record together", () => {
+		const events = [
+			{ kind: "message" as const, role: "user" as const, text: "a".repeat(120), endOffset: 100 },
+			{ kind: "message" as const, role: "assistant" as const, text: "b".repeat(120), endOffset: 100 },
+			{ kind: "message" as const, role: "user" as const, text: "c".repeat(120), endOffset: 200 },
+		];
+		const slices = splitScanSlices(events, 0, 200, 40);
+		expect(slices[0]?.events).toHaveLength(2);
+		expect(slices[0]?.endOffset).toBe(100);
+	});
+
+	it("keeps a short prefix with the next slice and leaves a short tail pending", () => {
+		const events = [
+			{ kind: "message" as const, role: "user" as const, text: "a".repeat(60), endOffset: 100 },
+			{ kind: "message" as const, role: "assistant" as const, text: "b".repeat(280), endOffset: 200 },
+			{ kind: "message" as const, role: "user" as const, text: "c".repeat(60), endOffset: 300 },
+		];
+		const slices = splitScanSlices(events, 0, 300, 80, 20);
+		expect(slices).toHaveLength(1);
+		expect(slices[0]?.rawTokens).toBe(85);
+		expect(slices[0]?.endOffset).toBe(200);
+	});
+});
+
 describe("observation parsing", () => {
 	it("extracts summary and enforces the char cap", () => {
 		const raw = "SUMMARY: Fixed the flaky test\n\nWe fixed it by mocking time. " + "x".repeat(2000);
@@ -132,16 +192,18 @@ describe("observation parsing", () => {
 describe("config merge", () => {
 	it("keeps defaults on garbage and overrides on valid values", () => {
 		const defaults = mergeConfig(undefined);
-		expect(defaults.scan.minNewChars).toBe(40_000);
+		expect(defaults.scan.minNewTokens).toBe(20_000);
+		expect(defaults.scan.maxNewTokens).toBe(80_000);
+		expect(defaults.observe.batchSize).toBe(4);
 		expect(defaults.scan.harnesses).toEqual(["pi", "codex", "claude", "grok"]);
-		const merged = mergeConfig({ scan: { minNewChars: 5 }, limits: { maxMemoryChars: 999 } });
-		expect(merged.scan.minNewChars).toBe(5);
+		const merged = mergeConfig({ scan: { minNewTokens: 5 }, consolidate: { maxMemoryChars: 999 } });
+		expect(merged.scan.minNewTokens).toBe(5);
 		const selected = mergeConfig({ scan: { harnesses: ["codex"] } });
 		expect(selected.scan.harnesses).toEqual(["codex"]);
-		expect(merged.limits.maxMemoryChars).toBe(999);
-		expect(merged.limits.maxObservations).toBe(30);
-		const bad = mergeConfig({ scan: { minNewChars: "lots" }, agent: { model: "" } });
-		expect(bad.scan.minNewChars).toBe(40_000);
+		expect(merged.consolidate.maxMemoryChars).toBe(999);
+		expect(merged.consolidate.triggerObservations).toBe(30);
+		const bad = mergeConfig({ scan: { minNewTokens: "lots" }, agent: { model: "" } });
+		expect(bad.scan.minNewTokens).toBe(20_000);
 		expect(bad.agent.model).toBeUndefined();
 		expect(bad.agent.thinking).toBeUndefined();
 		const configured = mergeConfig({ agent: { model: "openai/gpt-5.6-luna", thinking: "high" } });

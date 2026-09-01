@@ -15,6 +15,10 @@ diffing. Source commit: `698d57f79c471d86ab1cb3c44a36408daaeecb72`.
 | `adapters/codex.js` | `src/discovery/adapters/codex.js` | + `export` on `flattenOutput` (our glue reuses it) |
 | `adapters/grok.js` | `src/discovery/adapters/grok.js` | import path fix only |
 
+The shared deterministic distillation rules are adapted in `src/observe/preprocess.ts`
+because knowyou needs byte-offset slices and a different observation prompt. They retain
+Backpass's cheap-first behavior without importing its repository-analysis pipeline.
+
 Not vendored: the SQLite-backed adapters (`opencode`, `hermes`, `cursor-ide`, `cursor-cli`
 partially) — they need a sqlite driver; add when we support those harnesses. Also not
 vendored: `association.js` / `repo.js` (repo-association is a backpass concern — knowyou's

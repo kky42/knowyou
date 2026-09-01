@@ -12,7 +12,7 @@ export interface ScanReport {
 	observations: Array<{ file: string; summary: string; chars: number }>;
 	/** Candidates absorbed without an observation — model reported no new info. */
 	skipped?: number;
-	/** Candidates left for the next run because of maxObservationsPerRun. */
+	/** Raw slices left for the next run because of observe.maxSlicesPerRun. */
 	deferred?: number;
 	errors: Array<{ file: string; error: string }>;
 }

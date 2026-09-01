@@ -1,0 +1,214 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 1800 1080" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc">
+  <title id="title">knowyou asynchronous memory pipeline</title>
+  <desc id="desc">Supported agent sessions are scanned into twenty to eighty thousand token raw slices, compacted and observed in serial batches of four, then consolidated into shared Markdown memory.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbfcff"/>
+      <stop offset="1" stop-color="#f4f7fb"/>
+    </linearGradient>
+    <linearGradient id="scan" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eef7ff"/>
+      <stop offset="1" stop-color="#e5f0fb"/>
+    </linearGradient>
+    <linearGradient id="observe" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f2f0ff"/>
+      <stop offset="1" stop-color="#e9e6fc"/>
+    </linearGradient>
+    <linearGradient id="memory" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff8e7"/>
+      <stop offset="1" stop-color="#fff0c9"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#18345b" flood-opacity=".10"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0 0L12 6L0 12Z" fill="#23446f"/>
+    </marker>
+    <marker id="asyncArrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+      <path d="M0 0L11 5.5L0 11Z" fill="#7564b5"/>
+    </marker>
+    <style>
+      .title { font: 700 34px Inter, ui-sans-serif, system-ui, sans-serif; fill: #142c52; }
+      .subtitle { font: 400 17px Inter, ui-sans-serif, system-ui, sans-serif; fill: #5b6b82; }
+      .stage { font: 700 18px Inter, ui-sans-serif, system-ui, sans-serif; fill: #173a69; }
+      .stageWarm { font: 700 18px Inter, ui-sans-serif, system-ui, sans-serif; fill: #794b08; }
+      .label { font: 600 15px Inter, ui-sans-serif, system-ui, sans-serif; fill: #203b61; }
+      .body { font: 400 14px Inter, ui-sans-serif, system-ui, sans-serif; fill: #53657d; }
+      .small { font: 500 12px Inter, ui-sans-serif, system-ui, sans-serif; fill: #65758b; }
+      .mono { font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #244871; }
+      .badge { font: 700 12px Inter, ui-sans-serif, system-ui, sans-serif; fill: #fff; letter-spacing: .2px; }
+      .line { stroke: #23446f; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .async { stroke: #7564b5; stroke-width: 2.5; stroke-dasharray: 8 8; fill: none; marker-end: url(#asyncArrow); }
+      .divider { stroke: #d9e1ec; stroke-width: 1.5; stroke-dasharray: 7 8; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1080" rx="28" fill="url(#bg)"/>
+  <text x="56" y="64" class="title">How knowyou remembers</text>
+  <text x="56" y="94" class="subtitle">An asynchronous, agent-agnostic pipeline: raw sessions become small, durable pieces of shared memory.</text>
+  <rect x="1490" y="42" width="244" height="34" rx="17" fill="#e8f7f3" stroke="#5aa995"/>
+  <circle cx="1512" cy="59" r="6" fill="#39a486"/>
+  <text x="1527" y="64" class="label" fill="#267965">non-intrusive · background</text>
+
+  <!-- Main pipeline cards -->
+  <rect x="42" y="142" width="242" height="552" rx="22" fill="#fff" stroke="#acd0f1" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="310" y="142" width="370" height="552" rx="22" fill="url(#scan)" stroke="#6ca5d9" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="706" y="142" width="408" height="552" rx="22" fill="url(#observe)" stroke="#8d7dcc" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="1140" y="142" width="326" height="552" rx="22" fill="url(#memory)" stroke="#d8a838" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="1492" y="142" width="266" height="552" rx="22" fill="#fff" stroke="#8ccbbd" stroke-width="2" filter="url(#shadow)"/>
+
+  <!-- Sources -->
+  <text x="64" y="180" class="stage">Supported sessions</text>
+  <text x="64" y="207" class="body">all adapters are scanned by default</text>
+  <rect x="64" y="232" width="198" height="54" rx="14" fill="#eef7ff" stroke="#acd0f1"/>
+  <circle cx="89" cy="259" r="16" fill="#234d88"/>
+  <text x="82" y="266" font-size="20" font-weight="700" fill="#fff">π</text>
+  <text x="116" y="264" class="label">Pi</text>
+  <rect x="64" y="300" width="198" height="54" rx="14" fill="#eef7ff" stroke="#acd0f1"/>
+  <text x="82" y="333" font-size="20" font-weight="700" fill="#234d88">&lt;/&gt;</text>
+  <text x="144" y="332" class="label">Codex</text>
+  <rect x="64" y="368" width="198" height="54" rx="14" fill="#eef7ff" stroke="#acd0f1"/>
+  <circle cx="91" cy="395" r="17" fill="#234d88"/>
+  <text x="82" y="402" font-size="17" font-weight="700" fill="#fff">AI</text>
+  <text x="124" y="400" class="label">Claude</text>
+  <rect x="64" y="436" width="198" height="54" rx="14" fill="#eef7ff" stroke="#acd0f1"/>
+  <circle cx="91" cy="463" r="16" fill="#234d88"/>
+  <path d="M80 463c22-20 22 20 44 0" stroke="#fff" stroke-width="3" fill="none"/>
+  <text x="124" y="468" class="label">Grok</text>
+  <rect x="64" y="544" width="198" height="104" rx="14" fill="#f7fafc" stroke="#d5e0ed"/>
+  <text x="82" y="571" class="small">source material</text>
+  <text x="82" y="598" class="body">user + assistant turns</text>
+  <text x="82" y="621" class="body">tool calls → compact lines</text>
+  <path d="M284 418H300" class="line"/>
+
+  <!-- Scan -->
+  <text x="334" y="180" class="stage">1 · Scan</text>
+  <rect x="582" y="158" width="76" height="25" rx="12.5" fill="#3177b7"/>
+  <text x="595" y="175" class="badge">READ ONLY</text>
+  <text x="334" y="210" class="body">Find only the unprocessed increment.</text>
+  <rect x="334" y="238" width="322" height="68" rx="14" fill="#fff" stroke="#b7d4ee"/>
+  <text x="354" y="263" class="label">incremental JSONL read</text>
+  <text x="354" y="286" class="mono">UTF-8 bytes ÷ 4 ≈ tokens</text>
+  <rect x="334" y="326" width="322" height="48" rx="12" fill="#d8eafb"/>
+  <text x="354" y="356" class="label">under 20K → keep pending</text>
+  <text x="334" y="406" class="label">A large increment is cut at full records:</text>
+  <rect x="334" y="427" width="322" height="74" rx="12" fill="#fff" stroke="#b7d4ee"/>
+  <rect x="348" y="446" width="75" height="35" rx="8" fill="#e9edf2"/>
+  <text x="358" y="468" class="small">pending</text>
+  <text x="358" y="482" class="small">tail</text>
+  <rect x="429" y="446" width="93" height="35" rx="8" fill="#4b91cf"/>
+  <text x="444" y="468" class="badge">20K–80K</text>
+  <rect x="528" y="446" width="93" height="35" rx="8" fill="#75addc"/>
+  <text x="543" y="468" class="badge">20K–80K</text>
+  <text x="334" y="531" class="small">slice 0 · slice 1 · … · slice N</text>
+  <rect x="334" y="566" width="322" height="88" rx="14" fill="#f7fbff" stroke="#b7d4ee"/>
+  <text x="354" y="592" class="label">watermark safety</text>
+  <text x="354" y="616" class="body">offset advances only after observe</text>
+  <text x="354" y="638" class="body">succeeds; failed work retries later</text>
+  <path d="M680 418H696" class="line"/>
+
+  <!-- Observe -->
+  <text x="730" y="180" class="stage">2 · Observe</text>
+  <rect x="1007" y="158" width="84" height="25" rx="12.5" fill="#7564b5"/>
+  <text x="1019" y="175" class="badge">SERIAL</text>
+  <text x="730" y="210" class="body">Compact first, then ask one agent call.</text>
+  <rect x="730" y="238" width="360" height="72" rx="14" fill="#fff" stroke="#c7c0e9"/>
+  <text x="750" y="264" class="label">Backpass-style preprocessing</text>
+  <text x="750" y="287" class="body">redact · remove boilerplate · collapse tools</text>
+  <rect x="730" y="332" width="360" height="42" rx="12" fill="#dfdaf8"/>
+  <text x="750" y="359" class="mono">compacted slices → batchSize: 4</text>
+  <text x="730" y="407" class="label">One batch preserves a neighborhood:</text>
+  <rect x="730" y="428" width="220" height="48" rx="11" fill="#fff" stroke="#a99bd8"/>
+  <rect x="742" y="439" width="43" height="26" rx="7" fill="#7564b5"/><text x="750" y="457" class="badge">S0</text>
+  <text x="797" y="457" class="body">~0.5K–3K compacted</text>
+  <rect x="730" y="486" width="220" height="48" rx="11" fill="#fff" stroke="#a99bd8"/>
+  <rect x="742" y="497" width="43" height="26" rx="7" fill="#7564b5"/><text x="750" y="515" class="badge">S1</text>
+  <text x="797" y="515" class="body">same session / nearby</text>
+  <rect x="960" y="428" width="130" height="106" rx="14" fill="#6f62ad"/>
+  <text x="978" y="457" class="badge">ONE CALL</text>
+  <text x="978" y="483" font-size="24" font-weight="700" fill="#fff">observe</text>
+  <text x="978" y="508" class="badge">→ 1 observation</text>
+  <path d="M950 452H956" stroke="#7564b5" stroke-width="2" marker-end="url(#asyncArrow)"/>
+  <path d="M950 510H956" stroke="#7564b5" stroke-width="2" marker-end="url(#asyncArrow)"/>
+  <rect x="730" y="566" width="360" height="88" rx="14" fill="#f8f7ff" stroke="#c7c0e9"/>
+  <text x="750" y="592" class="label">output</text>
+  <text x="750" y="616" class="body">one factual observation, capped at</text>
+  <text x="750" y="638" class="mono">maxObservationChars: 500</text>
+  <path d="M1114 418H1130" class="line"/>
+
+  <!-- Consolidate -->
+  <text x="1164" y="180" class="stageWarm">3 · Consolidate</text>
+  <rect x="1378" y="158" width="68" height="25" rx="12.5" fill="#bd8618"/>
+  <text x="1392" y="175" class="badge">PERIODIC</text>
+  <text x="1164" y="210" class="body">Fold pending observations together.</text>
+  <rect x="1164" y="241" width="278" height="60" rx="14" fill="#fff" stroke="#ebcb7b"/>
+  <text x="1184" y="266" class="label">observation pool</text>
+  <text x="1184" y="287" class="mono">trigger at 30 observations</text>
+  <path d="M1303 316V344" class="async"/>
+  <rect x="1164" y="354" width="278" height="76" rx="14" fill="#fff" stroke="#ebcb7b"/>
+  <text x="1184" y="380" class="label">all pending observations</text>
+  <text x="1184" y="404" class="body">→ one consolidation call</text>
+  <path d="M1303 444V472" class="async"/>
+  <rect x="1164" y="483" width="278" height="100" rx="14" fill="#fff" stroke="#ebcb7b"/>
+  <text x="1184" y="511" class="label">newest wins</text>
+  <text x="1184" y="535" class="body">merge, deduplicate, evict</text>
+  <text x="1184" y="558" class="body">older detail to journals/</text>
+  <rect x="1164" y="612" width="278" height="42" rx="12" fill="#f8e8b6"/>
+  <text x="1184" y="639" class="mono">MEMORY.md ≤ 20K chars target</text>
+  <path d="M1466 418H1482" class="line"/>
+
+  <!-- Shared files -->
+  <text x="1516" y="180" class="stage">4 · Render</text>
+  <text x="1516" y="210" class="body">Write plain Markdown any agent can read.</text>
+  <rect x="1516" y="244" width="218" height="76" rx="14" fill="#eef9f6" stroke="#a3d4c8"/>
+  <text x="1538" y="274" class="label">INDEX.md</text>
+  <text x="1538" y="298" class="body">recent observations</text>
+  <rect x="1516" y="338" width="218" height="88" rx="14" fill="#eef9f6" stroke="#a3d4c8"/>
+  <text x="1538" y="369" class="label">MEMORY.md</text>
+  <text x="1538" y="394" class="body">durable facts + preferences</text>
+  <text x="1538" y="413" class="small">the main shared context</text>
+  <rect x="1516" y="444" width="218" height="76" rx="14" fill="#eef9f6" stroke="#a3d4c8"/>
+  <text x="1538" y="474" class="label">observations/</text>
+  <text x="1538" y="498" class="body">waiting to consolidate</text>
+  <rect x="1516" y="538" width="218" height="76" rx="14" fill="#eef9f6" stroke="#a3d4c8"/>
+  <text x="1538" y="568" class="label">journals/</text>
+  <text x="1538" y="592" class="body">older archived detail</text>
+  <path d="M1700 694V798" class="async"/>
+
+  <!-- Main arrows / direction -->
+  <text x="148" y="126" class="small">session events</text>
+  <text x="454" y="126" class="small">raw slices</text>
+  <text x="856" y="126" class="small">compacted batches</text>
+  <text x="1249" y="126" class="small">durable memory</text>
+
+  <!-- Async control lane -->
+  <line x1="42" y1="756" x2="1758" y2="756" class="divider"/>
+  <rect x="42" y="814" width="226" height="92" rx="18" fill="#f1edff" stroke="#b8a9e1" stroke-width="2"/>
+  <text x="66" y="849" class="stage">start / stop</text>
+  <text x="66" y="877" class="body">register or remove the OS job</text>
+  <rect x="300" y="814" width="276" height="92" rx="18" fill="#f1edff" stroke="#b8a9e1" stroke-width="2"/>
+  <circle cx="331" cy="860" r="15" fill="none" stroke="#7564b5" stroke-width="3"/>
+  <path d="M331 849V860L339 866" stroke="#7564b5" stroke-width="3" fill="none"/>
+  <text x="360" y="856" class="stage">OS scheduler</text>
+  <text x="360" y="881" class="body">every 1800 seconds</text>
+  <path d="M268 860H286" class="async"/>
+  <path d="M576 860H654V722" class="async"/>
+  <path d="M654 722V704" class="async"/>
+  <path d="M654 860H902V704" class="async"/>
+  <path d="M902 722V704" class="async"/>
+  <path d="M902 860H1280V704" class="async"/>
+  <path d="M1280 722V704" class="async"/>
+  <path d="M1280 860H1624V704" class="async"/>
+  <path d="M1624 722V704" class="async"/>
+
+  <!-- Agent instructions lane -->
+  <rect x="718" y="814" width="1016" height="92" rx="18" fill="#eaf8f4" stroke="#8ccbbd" stroke-width="2"/>
+  <text x="744" y="849" class="stage" fill="#237866">global AGENTS.md</text>
+  <text x="744" y="876" class="body">Each agent can read ~/.knowyou/INDEX.md and MEMORY.md.</text>
+  <text x="744" y="898" class="body">knowyou never edits the agent's sessions or instructions.</text>
+  <rect x="1450" y="834" width="252" height="50" rx="25" fill="#fff" stroke="#8ccbbd"/>
+  <text x="1472" y="865" class="label" fill="#237866">Pi · Codex · Claude · Grok</text>
+
+  <text x="56" y="984" class="small">Raw thresholds are estimates, not model-tokenization counts. A short tail stays pending until the next run.</text>
+  <text x="1744" y="984" text-anchor="end" class="small">quiet memory · shared by design</text>
+</svg>

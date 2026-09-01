@@ -4,10 +4,11 @@ import * as piAdapter from "./backpass/adapters/pi.js";
 import * as claudeAdapter from "./backpass/adapters/claude.js";
 import * as codexAdapter from "./backpass/adapters/codex.js";
 import * as grokAdapter from "./backpass/adapters/grok.js";
-import { contentToEvents, parseJsonLine } from "./backpass/adapters/shared.js";
+import { attachToolResults, contentToEvents, parseJsonLine } from "./backpass/adapters/shared.js";
 import { classifyInteraction, emptyInteractionSignals } from "./backpass/interaction.js";
 import { redactSecrets } from "./redact.js";
-import type { MessageEvent } from "../observe/prompts.js";
+import { eventRawText, eventBytes, isUserMessage, type MessageEvent } from "./events.js";
+import { estimateTokensFromBytes } from "../tokens.js";
 
 /**
  * Glue between vendored backpass adapters (see backpass/README.md) and knowyou's
@@ -25,7 +26,10 @@ export interface CandidateInfo {
 export interface IncrementResult {
 	events: MessageEvent[];
 	userTurns: number;
+	/** Legacy display metric retained for diagnostics; thresholds use newTokens. */
 	newChars: number;
+	newBytes: number;
+	newTokens: number;
 	newOffset: number;
 }
 
@@ -137,18 +141,16 @@ function harnessAdapter(
 				// so re-read from the start — otherwise post-truncation turns are lost forever.
 				const effectiveOffset = offset > size ? 0 : offset;
 				if (size <= effectiveOffset) {
-					return { events: [], userTurns: 0, newChars: 0, newOffset: Math.min(effectiveOffset, size) };
+					return { events: [], userTurns: 0, newChars: 0, newBytes: 0, newTokens: 0, newOffset: Math.min(effectiveOffset, size) };
 				}
 				const buffer = Buffer.alloc(size - effectiveOffset);
 				readSync(fd, buffer, 0, buffer.length, effectiveOffset);
 				const lastNewline = buffer.lastIndexOf(0x0a);
-				if (lastNewline === -1) return { events: [], userTurns: 0, newChars: 0, newOffset: effectiveOffset };
+				if (lastNewline === -1) return { events: [], userTurns: 0, newChars: 0, newBytes: 0, newTokens: 0, newOffset: effectiveOffset };
 				const region = buffer.subarray(0, lastNewline + 1).toString("utf8");
 				const newOffset = effectiveOffset + lastNewline + 1;
 
-				const events: MessageEvent[] = [];
-				let newChars = 0;
-				let userTurns = 0;
+				const rawEvents: any[] = [];
 				let lineStartByte = 0;
 				for (const line of region.split("\n")) {
 					const lineEndFileOffset = effectiveOffset + lineStartByte + Buffer.byteLength(line, "utf8") + 1;
@@ -162,16 +164,62 @@ function harnessAdapter(
 					}
 					if (!entry) continue;
 					for (const raw of entryToEvents(entry)) {
-						const text = raw.kind === "message" ? raw.text : raw.kind === "tool-result" ? raw.result : undefined;
-						if (typeof text !== "string" || !text.trim()) continue;
-						const clean = redact ? redactSecrets(text) : text;
-						const role = raw.role === "user" ? "user" : raw.role === "assistant" ? "assistant" : "tool";
-						newChars += clean.length;
-						if (role === "user") userTurns += 1;
-						events.push({ role, text: clean, endOffset: lineEndFileOffset });
+						if (!raw || typeof raw !== "object") continue;
+						const event = { ...raw, endOffset: lineEndFileOffset };
+						if (typeof event.text === "string") event.text = redact ? redactSecrets(event.text) : event.text;
+						if (typeof event.result === "string") event.result = redact ? redactSecrets(event.result) : event.result;
+						rawEvents.push(event);
 					}
 				}
-				return { events, userTurns, newChars, newOffset };
+
+				// Backpass associates tool results with their calls. Extend the call's source
+				// range through the result line so a raw slice never consumes the call while
+				// leaving its result for a later watermark.
+				const toolsById = new Map<string, any>();
+				for (const raw of rawEvents) {
+					if (raw.kind === "tool" && raw.pendingId) toolsById.set(raw.pendingId, raw);
+				}
+				for (const raw of rawEvents) {
+					if (raw.kind !== "tool-result" || !raw.id) continue;
+					const tool = toolsById.get(raw.id);
+					if (tool && typeof tool.endOffset === "number" && typeof raw.endOffset === "number") {
+						tool.endOffset = Math.max(tool.endOffset, raw.endOffset);
+					}
+				}
+				// A call can now reach past intervening transcript lines to its result. Keep
+				// effective boundaries monotonic so those lines stay in the same contiguous
+				// slice and a watermark never skips over them.
+				let contiguousEnd = effectiveOffset;
+				for (const raw of rawEvents) {
+					if (typeof raw.endOffset !== "number") continue;
+					contiguousEnd = Math.max(contiguousEnd, raw.endOffset);
+					raw.endOffset = contiguousEnd;
+				}
+
+				const events: MessageEvent[] = attachToolResults(rawEvents).flatMap((raw: any): MessageEvent[] => {
+					if (raw.kind === "message" && (raw.role === "user" || raw.role === "assistant")) {
+						return [{ kind: "message", role: raw.role, text: raw.text ?? "", endOffset: raw.endOffset }];
+					}
+					if (raw.kind === "message" && raw.role === "toolResult") {
+						return [{ kind: "tool", role: "tool", name: "tool-result", result: raw.text ?? "", endOffset: raw.endOffset }];
+					}
+					if (raw.kind === "tool") {
+						return [{
+							kind: "tool",
+							role: "tool",
+							name: raw.name,
+							input: raw.input,
+							result: raw.result,
+							status: raw.status,
+							endOffset: raw.endOffset,
+						}];
+					}
+					return [];
+				});
+				const newBytes = events.reduce((total, event) => total + eventBytes(event), 0);
+				const newChars = events.reduce((total, event) => total + eventRawText(event).length, 0);
+				const userTurns = events.filter(isUserMessage).length;
+				return { events, userTurns, newChars, newBytes, newTokens: estimateTokensFromBytes(newBytes), newOffset };
 			} finally {
 				closeSync(fd);
 			}
@@ -219,8 +267,15 @@ export const ADAPTERS: Record<string, HarnessAdapter> = {
 			const payload = entry.payload || {};
 			if (payload.type === "message" && (payload.role === "user" || payload.role === "assistant")) {
 				contentToEvents(payload.role, payload.content, events);
+			} else if (payload.type === "function_call" || payload.type === "custom_tool_call") {
+				events.push({
+					kind: "tool",
+					name: payload.name,
+					input: parseMaybeJson(payload.arguments ?? payload.input),
+					pendingId: payload.call_id,
+				});
 			} else if (payload.type === "function_call_output" || payload.type === "custom_tool_call_output") {
-				events.push({ kind: "tool-result", result: codexAdapter.flattenOutput(payload.output) });
+				events.push({ kind: "tool-result", id: payload.call_id, result: codexAdapter.flattenOutput(payload.output) });
 			}
 			return events;
 		},
@@ -238,6 +293,14 @@ export const ADAPTERS: Record<string, HarnessAdapter> = {
 					break;
 				case "assistant":
 					contentToEvents("assistant", entry.content, events);
+					for (const call of entry.tool_calls || []) {
+						events.push({
+							kind: "tool",
+							name: call.name,
+							input: parseMaybeJson(call.arguments ?? call.input),
+							pendingId: call.id,
+						});
+					}
 					break;
 				case "tool_result":
 					events.push({ kind: "tool-result", result: entry.content });
@@ -249,6 +312,15 @@ export const ADAPTERS: Record<string, HarnessAdapter> = {
 		(path: string) => join(path, "chat_history.jsonl"),
 	),
 };
+
+function parseMaybeJson(value: unknown): unknown {
+	if (typeof value !== "string") return value;
+	try {
+		return JSON.parse(value);
+	} catch {
+		return value;
+	}
+}
 
 export function getAdapter(name: string): HarnessAdapter | undefined {
 	return ADAPTERS[name];

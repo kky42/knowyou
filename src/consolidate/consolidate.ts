@@ -9,7 +9,7 @@ import { formatLocalTimestamp } from "../time.js";
 export interface ConsolidationReport {
 	/** Whether the pool was over the threshold and consolidation ran. */
 	triggered: boolean;
-	/** Observations folded into MEMORY.md (pool files deleted). */
+	/** All pending observations folded into MEMORY.md (pool files deleted). */
 	folded: number;
 	/** Final MEMORY.md size in chars — written as-is even when over quota. */
 	memoryChars: number;
@@ -32,10 +32,9 @@ export function poolFiles(home: string): string[] {
 }
 
 /**
- * Stage B — fold the oldest observation batch into MEMORY.md. One LLM call per batch
- * (the workload is a single shared document: inherently serial, no concurrency or
- * per-run cap applies). Failure semantics mirror observe: nothing is deleted unless the
- * new MEMORY.md and the journal are safely on disk, so a failed call just retries.
+ * Stage B — fold the entire observation pool into MEMORY.md. It is one shared-document
+ * read/modify/write, so it is inherently serial. Nothing is deleted unless the new
+ * MEMORY.md and journal are safely on disk; a failed call simply retries.
  */
 export async function runConsolidation(
 	config: KnowyouConfig,
@@ -51,12 +50,15 @@ export async function runConsolidation(
 	// Two triggers: pool at its limit, OR MEMORY.md over its quota (the soft-budget
 	// self-correction path — without this, an oversized MEMORY.md would never shrink
 	// unless the pool happened to fill up again).
-	const poolFull = pool.length >= config.limits.maxObservations;
-	const overQuota = currentMemory.length > config.limits.maxMemoryChars;
+	const poolFull = pool.length >= config.consolidate.triggerObservations;
+	const overQuota = currentMemory.length > config.consolidate.maxMemoryChars;
 	if (!poolFull && !overQuota) return report;
 	report.triggered = true;
 
-	const batch = pool.slice(0, Math.max(1, config.limits.consolidateBatchSize));
+	// Consolidation has no normal batch size: the whole compacted observation pool is the
+	// context for one shared-memory read/modify/write. The observation cap and pool trigger
+	// keep this bounded in ordinary operation.
+	const batch = pool;
 
 	const batchItems = batch.map((file) => {
 		const raw = readFileSync(file, "utf8");
@@ -95,7 +97,7 @@ export async function runConsolidation(
 	// self-corrects: the next consolidation sees the over-quota percentage and shrinks.
 	const memoryChars = newMemory.length;
 	report.memoryChars = memoryChars;
-	report.overQuota = memoryChars > config.limits.maxMemoryChars;
+	report.overQuota = memoryChars > config.consolidate.maxMemoryChars;
 
 	// Crash-safe order: journal first, then MEMORY.md, then remove absorbed pool files.
 	const journalsDir = join(home, "journals");

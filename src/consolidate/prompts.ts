@@ -16,7 +16,7 @@ export interface ConsolidationInput {
  */
 export function buildConsolidationPrompt(input: ConsolidationInput): string {
 	const { currentMemory, batch, config } = input;
-	const max = config.limits.maxMemoryChars;
+	const max = config.consolidate.maxMemoryChars;
 	const current = currentMemory.length;
 	const percent = Math.min(100, Math.round((current / max) * 100));
 	const headroom = Math.max(0, max - current);
@@ -32,7 +32,7 @@ export function buildConsolidationPrompt(input: ConsolidationInput): string {
 
 	return `You are the consolidation agent for knowyou, a persistent memory layer.
 
-Your job: fold a batch of older observations (each about to be deleted from the
+Your job: fold all pending observations (each about to be deleted from the
 observation pool) into MEMORY.md — the agent's long-term consolidated memory. These
 observations are about to be deleted, so anything worth keeping that you fail to record
 here is forgotten forever. Discarding clear noise is fine and expected; dropping a genuine
@@ -42,7 +42,7 @@ fact you meant to keep is the failure to avoid.
 
 - Current MEMORY.md: ${current} / ${max} chars (${percent}% full)
 - Remaining headroom: ${headroom} chars
-- Incoming batch: ${batch.length} observations, ~${batchChars} chars
+- Incoming observations: ${batch.length}, ~${batchChars} chars
 
 Keep the final MEMORY.md within ${max} chars. If folding everything would exceed the
 budget, condense the OLDEST sections and move their content into the JOURNAL section

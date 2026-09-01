@@ -17,7 +17,8 @@ import { getAdapter } from "../src/scan/adapters.js";
 import { writeFileSync } from "node:fs";
 
 const pi = getAdapter("pi")!;
-import { chunkEvents } from "../src/observe/prompts.js";
+import { preprocessEvents } from "../src/observe/preprocess.js";
+import { eventRawText } from "../src/scan/events.js";
 import { runScan } from "../src/pipeline.js";
 import { loadState } from "../src/scan/state.js";
 import { mergeConfig } from "../src/config.js";
@@ -84,7 +85,7 @@ describe("adapter on real session files", () => {
 		expect(inc.newChars).toBeLessThan(bytes / 2);
 		for (const event of inc.events) {
 			expect(["user", "assistant", "tool"]).toContain(event.role);
-			expect(event.text).not.toMatch(/^\s*$/);
+			expect(eventRawText(event)).not.toMatch(/^\s*$/);
 		}
 		// Full read consumes the whole file (it ends with a complete newline).
 		expect(inc.newOffset).toBe(bytes);
@@ -107,11 +108,11 @@ describe("adapter on real session files", () => {
 	});
 
 	it("strips control characters that would crash spawn argv", () => {
-		const { chunk } = chunkEvents([{ role: "tool", text: "before\u0000after\u0001tail" }]);
-		expect(chunk).toContain("before");
-		expect(chunk).toContain("after");
-		expect(chunk).toContain("tail");
-		expect(chunk).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/);
+		const { text } = preprocessEvents([{ kind: "message", role: "assistant", text: "before\u0000after\u0001tail" }]);
+		expect(text).toContain("before");
+		expect(text).toContain("after");
+		expect(text).toContain("tail");
+		expect(text).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/);
 	});
 
 	it("waits on a torn real-format line and absorbs it once the newline lands", () => {
@@ -134,13 +135,13 @@ describe("adapter on real session files", () => {
 
 describe("scan pipeline on real session files", () => {
 	const CONFIG = mergeConfig({
-		scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
-		limits: { maxObservationChars: 500 },
+		scan: { minNewTokens: 10, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
+		observe: { maxObservationChars: 500 },
 	});
 	// Echo the chunk itself (not the surrounding prompt template) so assertions can
 	// verify which conversation text actually reached the model.
 	const FAKE_DISTILL = async (prompt: string) => {
-		const chunk = prompt.split("Transcript slice:\n---\n")[1]?.replace(/\n---\s*$/, "") ?? "";
+		const chunk = prompt.split("Compacted transcript slices:\n---\n")[1]?.replace(/\n---\s*$/, "") ?? "";
 		return `SUMMARY: real-file observation\n\n${chunk}`;
 	};
 
@@ -151,7 +152,7 @@ describe("scan pipeline on real session files", () => {
 		expect(first.observations).toHaveLength(1);
 		const obs1 = first.observations[0]!.file;
 		const text1 = readFileSync(obs1, "utf8");
-		expect(text1).toContain(`source: ${file}`);
+		expect(text1).toContain(`source: ${JSON.stringify(file)}`);
 		const range1 = text1.match(/^range: (\d+)-(\d+)$/m)!;
 		expect(Number(range1[2])).toBe(statSync(file).size); // absorbed to EOF
 

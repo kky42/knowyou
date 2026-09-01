@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { acquireLock } from "../src/lock.js";
 import { atomicWriteFileSync } from "../src/atomic.js";
 import { redactSecrets } from "../src/scan/redact.js";
-import { chunkEvents, type MessageEvent } from "../src/observe/prompts.js";
+import { preprocessEvents } from "../src/observe/preprocess.js";
+import type { MessageEvent } from "../src/scan/events.js";
 import { runScan } from "../src/pipeline.js";
 import { loadState } from "../src/scan/state.js";
 import { mergeConfig } from "../src/config.js";
@@ -17,8 +18,8 @@ let sessionFile: string;
 let savedEnv: string | undefined;
 
 const CONFIG = mergeConfig({
-	scan: { minNewChars: 100, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
-	limits: { maxObservationChars: 500 },
+	scan: { minNewTokens: 25, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
+	observe: { maxObservationChars: 500 },
 });
 
 function line(obj: unknown): string {
@@ -90,22 +91,26 @@ describe("redaction of unquoted env/shell assignments", () => {
 	});
 });
 
-describe("chunked absorption of oversized increments", () => {
-	it("consumes events up to the cap and preserves the last consumed endOffset", () => {
-		// Per-message cap is 4000 chars, so ~20 capped messages overflow the 80k total.
-		const events: MessageEvent[] = Array.from({ length: 30 }, (_, i) => ({
-			role: "user" as const,
-			text: `e${i} ` + "x".repeat(4000),
-			endOffset: (i + 1) * 5000,
-		}));
-		const { chunk, consumed } = chunkEvents(events);
-		expect(consumed).toBeGreaterThan(0);
-		expect(consumed).toBeLessThan(30);
-		expect(chunk).toContain("e0 ");
-		expect(chunk).not.toContain(`e${consumed} `);
+	describe("Backpass-style preprocessing", () => {
+		it("keeps conversation signal, collapses tools, and enforces a token cap", () => {
+			const events: MessageEvent[] = [
+				{ kind: "message", role: "user", text: "Decide the deployment strategy." },
+				{ kind: "tool", role: "tool", name: "Bash", input: { command: "npm test" }, result: "all tests passed" },
+				{ kind: "message", role: "assistant", text: "Use staging before production." },
+			];
+			const compacted = preprocessEvents(events, 100);
+			expect(compacted.text).toContain("Decide the deployment strategy.");
+			expect(compacted.text).toContain("tool: Bash");
+			expect(compacted.text).toContain("npm test");
+			expect(compacted.estimatedTokens).toBeLessThanOrEqual(100);
+			const bounded = preprocessEvents([{ kind: "message", role: "assistant", text: "x".repeat(10000) }], 20);
+			expect(bounded.elided).toBe(true);
+			expect(bounded.estimatedTokens).toBeLessThanOrEqual(20);
+		});
 	});
 
-	it("absorbs an increment end to end — offset advances to the real EOF", async () => {
+	describe("increment absorption", () => {
+		it("absorbs an increment end to end — offset advances to the real EOF", async () => {
 		writeFileSync(
 			sessionFile,
 			line({ type: "session", cwd: "/x", id: "s1" }) +
@@ -118,8 +123,8 @@ describe("chunked absorption of oversized increments", () => {
 		expect(report.errors).toHaveLength(0);
 		const entry = loadState(home).sessions[sessionFile];
 		expect(entry?.offset).toBe(entry?.bytes);
+		});
 	});
-});
 
 describe("malformed model output", () => {
 	it("rejects blank output: error reported, increment not absorbed (retried next round)", async () => {

@@ -9,7 +9,7 @@ import { formatLocalTimestamp } from "../src/time.js";
 let home: string;
 
 const CONFIG = mergeConfig({
-	limits: { maxObservations: 5, consolidateBatchSize: 3, maxMemoryChars: 20000 },
+	consolidate: { triggerObservations: 5, maxMemoryChars: 20000 },
 });
 
 function seedPool(count: number): void {
@@ -52,20 +52,20 @@ describe("consolidation", () => {
 		expect(called).toBe(0);
 	});
 
-	it("folds the oldest batch, writes MEMORY.md, deletes absorbed pool files", async () => {
-		seedPool(7); // threshold 5, batch 3 → fold 3 oldest, pool drops to 4
+	it("folds the whole pool, writes MEMORY.md, and deletes absorbed pool files", async () => {
+		seedPool(7); // threshold 5 → fold all 7 in one call
 		const report = await runConsolidation(CONFIG, home, new Date(), {
 			distill: foldingDistill("# Memory\n\n- Fact number 0 merged."),
 		});
 
 		expect(report.triggered).toBe(true);
-		expect(report.folded).toBe(3);
+		expect(report.folded).toBe(7);
 		expect(report.memoryChars).toBeGreaterThan(0);
 		expect(report.overQuota).toBe(false);
-		expect(poolFiles(home)).toHaveLength(4);
-		// The OLDEST files were folded (deleted), newer ones remain.
+		expect(poolFiles(home)).toHaveLength(0);
+		// Every pending observation was folded in the single consolidation call.
 		expect(existsSync(join(home, "observations", "2026-08-31-10-00-00.md"))).toBe(false);
-		expect(existsSync(join(home, "observations", "2026-08-31-10-00-00.md").replace("00.md", "06.md"))).toBe(true);
+		expect(existsSync(join(home, "observations", "2026-08-31-10-00-00.md").replace("00.md", "06.md"))).toBe(false);
 		expect(readFileSync(join(home, "MEMORY.md"), "utf8")).toContain("Fact number 0 merged.");
 	});
 
@@ -92,8 +92,8 @@ describe("consolidation", () => {
 		const written = readFileSync(join(home, "MEMORY.md"), "utf8");
 		expect(written).toContain(huge.slice(0, 100));
 		expect(report.memoryChars).toBe(written.trim().length);
-		expect(report.memoryChars).toBeGreaterThan(CONFIG.limits.maxMemoryChars);
-		expect(poolFiles(home)).toHaveLength(4); // absorbed regardless
+		expect(report.memoryChars).toBeGreaterThan(CONFIG.consolidate.maxMemoryChars);
+		expect(poolFiles(home)).toHaveLength(0); // absorbed regardless
 	});
 
 	it("fails the round (pool untouched) when the output has no markers", async () => {

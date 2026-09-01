@@ -8,7 +8,7 @@
 
 knowyou is a non-intrusive, agent-agnostic memory layer for Pi, Codex, Claude, and Grok. It runs in the background, distilling and consolidating session context into shared Markdown—so every agent knows why it is here, what matters next, and how you like to work.
 
-![knowyou asynchronous data flow: supported agent sessions flow through scan, observe, consolidate, and render into shared Markdown memory](assets/knowyou-flow.png)
+![knowyou asynchronous data flow: supported agent sessions flow through token-bounded scan slices, serial observation batches, consolidation, and shared Markdown memory](assets/knowyou-flow-async.svg)
 
 ## Quick start
 
@@ -55,13 +55,23 @@ To override only the settings you care about, create `~/.knowyou/config.yaml`:
 agent:
   model: provider/model       # optional; otherwise Pi's default
   thinking: medium            # optional; otherwise Pi's default
-  maxConcurrency: 4
 
 scan:
   windowDays: 7
-  minNewChars: 40000
+  minNewTokens: 20000         # estimated raw transcript tokens before preprocessing
+  maxNewTokens: 80000         # estimated raw tokens per session slice
   redactSecrets: true
+
+observe:
+  batchSize: 4                # compacted slices per Pi call, processed serially
+
+consolidate:
+  triggerObservations: 30
+  maxMemoryChars: 20000
 ```
+
+Token counts are estimates using UTF-8 bytes divided by four. Scan slices are compacted
+deterministically before observation; related compacted slices are grouped into batches.
 
 Check the current state with:
 
