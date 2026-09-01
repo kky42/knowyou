@@ -2,6 +2,7 @@ import type { KnowyouConfig } from "./config.js";
 import { scanPhase, type ClassifiedFile, type FileStatus } from "./scan/scan.js";
 import { observePhase, type ScanDeps, type ObserveReport } from "./observe/observe.js";
 import { loadState, saveState, type ScanState } from "./scan/state.js";
+import { formatLocalTimestamp } from "./time.js";
 
 export interface ScanReport {
 	filesSeen: number;
@@ -34,7 +35,7 @@ export async function runScan(config: KnowyouConfig, home: string, now = new Dat
 	);
 	const allErrors = [...scan.errors.map((e) => ({ file: e.file, error: e.error })), ...observe.errors];
 	state.lastRun = {
-		at: now.toISOString(),
+		at: formatLocalTimestamp(now),
 		ok: allErrors.length === 0,
 		errorCount: allErrors.length,
 		lastError: allErrors[0]?.error,

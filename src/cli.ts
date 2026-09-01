@@ -8,6 +8,7 @@ import { renderIndex } from "./render/index-render.js";
 import { runConsolidation, poolFiles } from "./consolidate/consolidate.js";
 import { start as scheduleStart, stop as scheduleStop, isRegistered, plistPath } from "./schedule.js";
 import { acquireLock } from "./lock.js";
+import { formatLocalDateTime, formatLocalTimestamp } from "./time.js";
 
 const USAGE = `knowyou — an agent-agnostic background memory layer
 
@@ -18,13 +19,18 @@ Usage:
   knowyou start    register the periodic job (not implemented yet)
   knowyou stop     unregister the periodic job (not implemented yet)`;
 
+function localLastRun(value: string): string {
+	const date = new Date(value);
+	return Number.isNaN(date.getTime()) ? value : formatLocalDateTime(date);
+}
+
 async function cmdScan(home: string): Promise<number> {
 	const config = loadConfig(home);
 	const state = loadState(home);
 	return scanPhase(config, state).then((scan) => {
 		const since = new Date(scan.cutoffMs);
 		console.log(`knowyou scan — dry run (nothing written, no LLM calls)`);
-		console.log(`window: last ${config.scan.windowDays} days (since ${since.toISOString().slice(0, 16).replace("T", " ")})`);
+		console.log(`window: last ${config.scan.windowDays} days (since ${formatLocalDateTime(since, false)})`);
 		for (const harness of scan.harnesses) {
 			const c = harness.counts;
 			console.log(
@@ -73,7 +79,7 @@ async function runPipeline(home: string): Promise<number> {
 		...observe.errors,
 	];
 	state.lastRun = {
-		at: new Date().toISOString(),
+		at: formatLocalTimestamp(new Date()),
 		ok: allErrors.length === 0,
 		errorCount: allErrors.length,
 		lastError: allErrors[0]?.error,
@@ -125,8 +131,8 @@ async function main(argv: string[]): Promise<number> {
 			const lr = state.lastRun;
 			console.log(
 				lr.ok
-					? `last run: ${lr.at.slice(0, 19).replace("T", " ")} — ok`
-					: `last run: ${lr.at.slice(0, 19).replace("T", " ")} — FAILED (${lr.errorCount} errors, retrying next round)`,
+					? `last run: ${localLastRun(lr.at)} — ok`
+					: `last run: ${localLastRun(lr.at)} — FAILED (${lr.errorCount} errors, retrying next round)`,
 			);
 			if (lr.lastError) console.log(`  last error: ${lr.lastError.slice(0, 200)}`);
 		} else {

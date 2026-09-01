@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { runScan } from "../src/pipeline.js";
 import { loadState } from "../src/scan/state.js";
 import { mergeConfig } from "../src/config.js";
+import { formatLocalTimestamp } from "../src/time.js";
 
 /**
  * Orchestration tests for runScan's filter branches — the unit tests in scan.test.ts
@@ -134,10 +135,15 @@ describe("runScan orchestration filters", () => {
 				message("user", "second turn"),
 		);
 		// 2 user turns — passes the noise filter, crosses the threshold.
-		const first = await runScan(CONFIG, home, new Date(), { distill: FAKE_DISTILL });
+		const now = new Date("2026-01-02T03:04:05.678Z");
+		const first = await runScan(CONFIG, home, now, { distill: FAKE_DISTILL });
 		expect(first.observations).toHaveLength(1);
 
-		const second = await runScan(CONFIG, home, new Date(), { distill: FAKE_DISTILL });
+		const observation = readFileSync(join(home, "observations", readdirSync(join(home, "observations"))[0]!), "utf8");
+		expect(observation).toContain(`created: ${formatLocalTimestamp(now)}`);
+		expect(loadState(home).lastRun?.at).toBe(formatLocalTimestamp(now));
+
+		const second = await runScan(CONFIG, home, now, { distill: FAKE_DISTILL });
 		expect(second.unchanged).toBe(1);
 		expect(second.observations).toHaveLength(0);
 		expect(readdirSync(join(home, "observations"))).toHaveLength(1);

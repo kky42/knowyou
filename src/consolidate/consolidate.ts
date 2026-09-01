@@ -4,6 +4,7 @@ import type { KnowyouConfig } from "../config.js";
 import { runAgentPrompt } from "../agents/runner.js";
 import { atomicWriteFileSync } from "../atomic.js";
 import { buildConsolidationPrompt, type ConsolidationInput } from "./prompts.js";
+import { formatLocalTimestamp } from "../time.js";
 
 export interface ConsolidationReport {
 	/** Whether the pool was over the threshold and consolidation ran. */
@@ -103,7 +104,7 @@ export async function runConsolidation(
 		const pad = (n: number) => String(n).padStart(2, "0");
 		const slug = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
 		const journalFile = join(journalsDir, `${slug}.md`);
-		atomicWriteFileSync(journalFile, `---\ncreated: ${now.toISOString()}\nfolded: ${batch.length}\n---\n${journal}\n`);
+		atomicWriteFileSync(journalFile, `---\ncreated: ${formatLocalTimestamp(now)}\nfolded: ${batch.length}\n---\n${journal}\n`);
 		report.journalFile = journalFile;
 	}
 

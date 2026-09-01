@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { KnowyouConfig } from "../config.js";
 import { runAgentPrompt } from "../agents/runner.js";
 import { buildObservationPrompt, chunkEvents, parseObservation } from "./prompts.js";
+import { formatLocalTimestamp } from "../time.js";
 import type { ClassifiedFile, ScanResult } from "../scan/scan.js";
 import type { ScanState, SessionWatermark } from "../scan/state.js";
 
@@ -118,7 +119,7 @@ export async function observePhase(
 			const obsPath = uniqueObservationPath(observationsDir, timestampSlug(now));
 			writeFileSync(
 				obsPath,
-				`---\ncreated: ${now.toISOString()}\nsource: ${candidate.path}\n` +
+				`---\ncreated: ${formatLocalTimestamp(now)}\nsource: ${candidate.path}\n` +
 					`range: ${entry.offset}-${absorbedOffset}\n---\n${summary}\n\n${body}\n`,
 			);
 			state.sessions[candidate.path] = {

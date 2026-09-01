@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runConsolidation, poolFiles } from "../src/consolidate/consolidate.js";
 import { mergeConfig } from "../src/config.js";
+import { formatLocalTimestamp } from "../src/time.js";
 
 let home: string;
 
@@ -70,11 +71,13 @@ describe("consolidation", () => {
 
 	it("writes a journal file when the model evicts content", async () => {
 		seedPool(7);
-		const report = await runConsolidation(CONFIG, home, new Date(), {
+		const now = new Date("2026-01-02T03:04:05.678Z");
+		const report = await runConsolidation(CONFIG, home, now, {
 			distill: foldingDistill("# Memory\n\ncondensed.", "archived: old deploy notes from 2026-08-01"),
 		});
 		expect(report.journalFile).toBeDefined();
 		expect(readFileSync(report.journalFile!, "utf8")).toContain("archived: old deploy notes");
+		expect(readFileSync(report.journalFile!, "utf8")).toContain(`created: ${formatLocalTimestamp(now)}`);
 		expect(readdirSync(join(home, "journals"))).toHaveLength(1);
 	});
 
