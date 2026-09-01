@@ -8,7 +8,7 @@
 
 knowyou is a non-intrusive, agent-agnostic memory layer for Pi, Codex, Claude, and Grok. It runs in the background, distilling and consolidating session context into shared Markdown—so every agent knows why it is here, what matters next, and how you like to work.
 
-![knowyou asynchronous data flow: supported agent sessions flow through token-bounded scan slices, serial observation batches, consolidation, and shared Markdown memory](assets/knowyou-flow-async-v2.png)
+![knowyou asynchronous data flow: supported agent sessions flow through token-bounded scan slices, serial observations, consolidation, and shared Markdown memory](assets/knowyou-flow-async-v2.png)
 
 ## Quick start
 
@@ -59,25 +59,37 @@ agent:
 scan:
   windowDays: 7
   minNewTokens: 20000         # estimated raw transcript tokens before preprocessing
-  maxNewTokens: 80000         # estimated raw tokens per session slice
+  maxNewTokens: 200000        # estimated raw tokens per session slice
   redactSecrets: true
 
 observe:
-  batchSize: 4                # compacted slices per Pi call, processed serially
+  # each slice is compacted to <=10K tokens and observed alone;
+  # the complete observation request stays below 12K
 
 consolidate:
   triggerObservations: 30
   maxMemoryChars: 20000
 ```
 
-Token counts are estimates using UTF-8 bytes divided by four. Scan slices are compacted
-deterministically before observation; related compacted slices are grouped into batches.
+Token counts are estimates using UTF-8 bytes divided by four. Each scan slice is compacted
+deterministically to at most 10K estimated tokens, then observed in its own serial Pi call;
+instructions and metadata keep the complete request below 12K.
 
 Check the current state with:
 
 ```bash
 npx knowyou@latest status
 ```
+
+Repository E2E tests always use the real Pi provider and local real-session corpus:
+
+```bash
+npm run test:e2e
+```
+
+Reviewable redacted compacted traces, observations, memory, journals, state, corpus
+receipts, and CLI logs are written to the gitignored `e2e-results/` directory. Raw
+session files remain in their original harness stores and are never copied there.
 
 All state stays under `~/.knowyou/`. Model requests go through Pi and its normal provider/authentication.
 

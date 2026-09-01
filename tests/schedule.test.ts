@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPlist, LABEL } from "../src/schedule.js";
+import { buildPlist, cronSchedule, LABEL } from "../src/schedule.js";
 
 describe("launchd plist", () => {
 	it("embeds label, interval, program args and log paths", () => {
@@ -15,5 +15,15 @@ describe("launchd plist", () => {
 		expect(plist).toContain("<string>/opt/knowyou/dist/cli.js</string>");
 		expect(plist).toContain("<string>run</string>");
 		expect(plist).toContain("<string>/Users/x/.knowyou/launchd.log</string>");
+	});
+});
+
+describe("Linux cron schedule", () => {
+	it("uses the hour field for intervals above 59 minutes", () => {
+		expect(cronSchedule(7200)).toBe("0 */2 * * *");
+	});
+
+	it("rejects intervals cron cannot represent exactly", () => {
+		expect(() => cronSchedule(5400)).toThrow(/cannot represent/);
 	});
 });

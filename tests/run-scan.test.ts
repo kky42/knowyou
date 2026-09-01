@@ -127,10 +127,10 @@ describe("runScan orchestration filters", () => {
 		expect(obsText).toContain("xxx");
 	});
 
-	it("batches multiple raw slices from one session into one observation", async () => {
+	it("observes each raw slice independently", async () => {
 		const sliced = mergeConfig({
 			scan: { minNewTokens: 40, maxNewTokens: 80, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
-			observe: { batchSize: 4, maxSlicesPerRun: 10 },
+			observe: { maxSlicesPerRun: 10 },
 		});
 		writeSession(
 			line({ type: "session", cwd: "/x", id: "s1" }) +
@@ -150,10 +150,8 @@ describe("runScan orchestration filters", () => {
 				return "SUMMARY: batched\n\nthree related slices";
 			},
 		});
-		expect(report.observations).toHaveLength(1);
-		expect(calls).toBe(1);
-		expect(observedPrompt).toContain("slice 0");
-		expect(observedPrompt).toContain("slice 1");
+		expect(report.observations).toHaveLength(3);
+		expect(calls).toBe(3);
 		expect(observedPrompt).toContain("slice 2");
 		const state = loadState(home);
 		expect(state.sessions[sessionFile]?.offset).toBe(state.sessions[sessionFile]?.bytes);
@@ -282,7 +280,7 @@ describe("per-run cap and serial batching", () => {
 		seedSessions(5);
 		const capped = mergeConfig({
 			scan: { minNewTokens: 25, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
-			observe: { maxSlicesPerRun: 2, batchSize: 1 },
+			observe: { maxSlicesPerRun: 2 },
 		});
 		let calls = 0;
 		const counting = async (prompt: string) => {
@@ -306,11 +304,11 @@ describe("per-run cap and serial batching", () => {
 		expect(second.deferred).toBe(1);
 	});
 
-	it("batches up to four slices and processes batches serially", async () => {
+	it("processes individual slices serially", async () => {
 		seedSessions(6);
 		const limited = mergeConfig({
 			scan: { minNewTokens: 25, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
-			observe: { maxSlicesPerRun: 10, batchSize: 4 },
+			observe: { maxSlicesPerRun: 10 },
 		});
 		let active = 0;
 		let peak = 0;
@@ -325,8 +323,8 @@ describe("per-run cap and serial batching", () => {
 		};
 
 		const report = await runScan(limited, home, new Date(), { distill: tracking });
-		expect(report.observations).toHaveLength(2);
-		expect(calls).toBe(2);
+		expect(report.observations).toHaveLength(6);
+		expect(calls).toBe(6);
 		expect(peak).toBe(1);
 	});
 });

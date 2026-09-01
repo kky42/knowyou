@@ -18,7 +18,7 @@ export interface ObserveReport {
 }
 
 export interface ScanDeps {
-	/** Distill one observation batch into raw model output. Injectable for tests. */
+	/** Distill one compacted slice into raw model output. Injectable for integration tests. */
 	distill?: (prompt: string) => Promise<string>;
 }
 
@@ -59,60 +59,8 @@ function compareSlices(a: ScanSlice, b: ScanSlice): number {
 	return a.mtimeMs - b.mtimeMs || a.path.localeCompare(b.path) || a.sequence - b.sequence;
 }
 
-/**
- * Group nearby compacted slices. Same-session continuity is preferred; remaining slots
- * are filled by the nearest session timestamps. The result is deterministic.
- */
-export function batchSlices(slices: PreparedSlice[], batchSize: number): PreparedSlice[][] {
-	const remaining = [...slices].sort((a, b) => compareSlices(a.slice, b.slice));
-	const batches: PreparedSlice[][] = [];
-	const size = Math.max(1, Math.floor(batchSize));
-
-	while (remaining.length > 0) {
-		const seed = remaining.shift()!;
-		const batch: PreparedSlice[] = [seed];
-		let lastSequence = seed.sequence;
-
-		// Preserve adjacent slices from the same session first.
-		while (batch.length < size) {
-			const index = remaining.findIndex((candidate) => candidate.path === seed.path && candidate.sequence === lastSequence + 1);
-			if (index === -1) break;
-			const next = remaining.splice(index, 1)[0]!;
-			batch.push(next);
-			lastSequence = next.sequence;
-		}
-
-		// Fill unused capacity with the closest available time neighbors.
-		while (batch.length < size && remaining.length > 0) {
-			let nearest = 0;
-			for (let i = 1; i < remaining.length; i++) {
-				const currentDistance = Math.abs(remaining[i]!.slice.mtimeMs - seed.slice.mtimeMs);
-				const nearestDistance = Math.abs(remaining[nearest]!.slice.mtimeMs - seed.slice.mtimeMs);
-				if (currentDistance < nearestDistance || (currentDistance === nearestDistance && compareSlices(remaining[i]!.slice, remaining[nearest]!.slice) < 0)) {
-					nearest = i;
-				}
-			}
-			batch.push(remaining.splice(nearest, 1)[0]!);
-		}
-		batches.push(batch);
-	}
-	return batches;
-}
-
-function sourceFrontMatter(batch: PreparedSlice[]): string {
-	if (batch.length === 1) {
-		const source = batch[0]!.slice;
-		return `source: ${JSON.stringify(source.path)}\nrange: ${source.startOffset}-${source.endOffset}\n`;
-	}
-	const lines = ["sources:"];
-	for (const prepared of batch) {
-		const slice = prepared.slice;
-		lines.push(`  - harness: ${JSON.stringify(slice.harness)}`);
-		lines.push(`    path: ${JSON.stringify(slice.path)}`);
-		lines.push(`    range: ${slice.startOffset}-${slice.endOffset}`);
-		lines.push(`    sequence: ${slice.sequence}`);
-	}
-	return `${lines.join("\n")}\n`;
+function sourceFrontMatter(source: ScanSlice): string {
+	return `source: ${JSON.stringify(source.path)}\nrange: ${source.startOffset}-${source.endOffset}\n`;
 }
 
 function absorbSlice(state: ScanState, slice: ScanSlice): void {
@@ -131,10 +79,7 @@ function absorbSlice(state: ScanState, slice: ScanSlice): void {
 	};
 }
 
-/**
- * Stage 2 — preprocess raw scan slices, batch up to N compacted slices, and process batches
- * serially. A batch only advances its source watermarks after its one model call succeeds.
- */
+/** Stage 2 — compact and observe raw slices serially, advancing each watermark on success. */
 export async function observePhase(
 	config: KnowyouConfig,
 	home: string,
@@ -166,46 +111,43 @@ export async function observePhase(
 			text: compacted.text,
 		};
 	});
-	const batches = batchSlices(prepared, config.observe.batchSize);
 	const blockedPaths = new Set<string>();
 
-	for (const batch of batches) {
-		if (batch.some((item) => blockedPaths.has(item.path))) {
-			report.deferred = (report.deferred ?? 0) + batch.length;
+	for (const item of prepared) {
+		if (blockedPaths.has(item.path)) {
+			report.deferred = (report.deferred ?? 0) + 1;
 			continue;
 		}
 
-		const prompt = buildObservationPrompt(batch, config.observe.maxObservationChars);
+		const prompt = buildObservationPrompt(item, config.observe.maxObservationChars);
 		let raw: string;
 		try {
 			raw = await distill(prompt);
 		} catch (error) {
-			const file = batch.map((item) => item.path).join(", ");
-			report.errors.push({ file, error: error instanceof Error ? error.message : String(error) });
-			for (const item of batch) blockedPaths.add(item.path);
+			report.errors.push({ file: item.path, error: error instanceof Error ? error.message : String(error) });
+			blockedPaths.add(item.path);
 			continue;
 		}
 
 		const { summary, body } = parseObservation(raw, config.observe.maxObservationChars);
 		if (!body.trim() || !summary.trim()) {
-			const file = batch.map((item) => item.path).join(", ");
-			report.errors.push({ file, error: "empty or malformed observation output — slices not absorbed; will retry" });
-			for (const item of batch) blockedPaths.add(item.path);
+			report.errors.push({ file: item.path, error: "empty or malformed observation output — slice not absorbed; will retry" });
+			blockedPaths.add(item.path);
 			continue;
 		}
 
 		if (body.trim() === "-") {
-			for (const item of batch) absorbSlice(state, item.slice);
-			report.skipped = (report.skipped ?? 0) + batch.length;
+			absorbSlice(state, item.slice);
+			report.skipped = (report.skipped ?? 0) + 1;
 			continue;
 		}
 
 		const obsPath = uniqueObservationPath(observationsDir, timestampSlug(now));
 		writeFileSync(
 			obsPath,
-			`---\ncreated: ${formatLocalTimestamp(now)}\n${sourceFrontMatter(batch)}---\n${summary}\n\n${body}\n`,
+			`---\ncreated: ${formatLocalTimestamp(now)}\n${sourceFrontMatter(item.slice)}---\n${summary}\n\n${body}\n`,
 		);
-		for (const item of batch) absorbSlice(state, item.slice);
+		absorbSlice(state, item.slice);
 		report.observations.push({ file: obsPath, summary, chars: body.length });
 	}
 

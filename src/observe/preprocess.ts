@@ -8,10 +8,9 @@ import { estimateTokens } from "../tokens.js";
 const TOOL_INPUT_CHARS = 160;
 const TOOL_OUTPUT_CHARS = 200;
 const MESSAGE_CHARS = 6000;
-// Keeps a typical 20K–80K raw slice compact enough that a four-slice observe batch
-// remains comfortable for ordinary model context windows. This is an internal safety
-// cap, not another user-facing batching knob.
-export const DEFAULT_COMPACTED_TOKENS = 3000;
+// Reserve roughly 2K tokens for the observation instructions and slice metadata so the
+// complete request stays below the 12K input budget. Each compacted slice is observed alone.
+export const MAX_COMPACTED_TOKENS = 10_000;
 
 const BOILERPLATE = [
 	/^<system-reminder>/,
@@ -112,7 +111,7 @@ function capTrace(body: string, maxTokens: number): { text: string; elided: bool
 }
 
 /** Deterministically compact one raw scan slice before it reaches the observation model. */
-export function preprocessEvents(events: MessageEvent[], maxTokens = DEFAULT_COMPACTED_TOKENS): PreprocessedTrace {
+export function preprocessEvents(events: MessageEvent[], maxTokens = MAX_COMPACTED_TOKENS): PreprocessedTrace {
 	const lines: string[] = [];
 	let turn = 0;
 	for (const event of events) {

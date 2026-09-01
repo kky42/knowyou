@@ -81,19 +81,42 @@ describe("consolidation", () => {
 		expect(readdirSync(join(home, "journals"))).toHaveLength(1);
 	});
 
-	it("accepts over-quota output as-is — measured, never modified", async () => {
+	it("retries once and retains the tail when both outputs exceed quota", async () => {
 		seedPool(7);
 		const huge = "# Memory\n\n" + "over budget line. ".repeat(2000); // ~37K chars > 20K quota
-		const report = await runConsolidation(CONFIG, home, new Date(), { distill: foldingDistill(huge) });
+		let calls = 0;
+		const report = await runConsolidation(CONFIG, home, new Date(), {
+			distill: async () => {
+				calls += 1;
+				return `===MEMORY===\n${huge}\n===JOURNAL===\n-`;
+			},
+		});
 
-		expect(report.overQuota).toBe(true);
-		// Written verbatim — no truncation, no retry-mangling. The file holds the model's
-		// output (plus a single trailing newline we add); size matches what was reported.
+		expect(calls).toBe(2);
+		expect(report.retried).toBe(true);
+		expect(report.trimmed).toBe(true);
+		expect(report.overQuota).toBe(false);
 		const written = readFileSync(join(home, "MEMORY.md"), "utf8");
-		expect(written).toContain(huge.slice(0, 100));
-		expect(report.memoryChars).toBe(written.trim().length);
-		expect(report.memoryChars).toBeGreaterThan(CONFIG.consolidate.maxMemoryChars);
-		expect(poolFiles(home)).toHaveLength(0); // absorbed regardless
+		expect(written.trim().length).toBeLessThanOrEqual(CONFIG.consolidate.maxMemoryChars);
+		expect(written).toContain("over budget line");
+		expect(readFileSync(report.journalFile!, "utf8")).toContain("Quota overflow archive");
+		expect(poolFiles(home)).toHaveLength(0);
+	});
+
+	it("uses a within-quota retry without deterministic trimming", async () => {
+		seedPool(7);
+		let calls = 0;
+		const report = await runConsolidation(CONFIG, home, new Date(), {
+			distill: async () => {
+				calls += 1;
+				const memory = calls === 1 ? "x".repeat(21_000) : "# Memory\n\ncompact";
+				return `===MEMORY===\n${memory}\n===JOURNAL===\n-`;
+			},
+		});
+		expect(calls).toBe(2);
+		expect(report.retried).toBe(true);
+		expect(report.trimmed).toBeUndefined();
+		expect(readFileSync(join(home, "MEMORY.md"), "utf8")).toContain("compact");
 	});
 
 	it("fails the round (pool untouched) when the output has no markers", async () => {

@@ -103,10 +103,10 @@ describe("pi adapter: increment reading", () => {
 	});
 
 	it("validates session header", () => {
-		expect(pi.looksLikeSession(file)).toBe(true);
+		expect(pi.classify(file)).toBe("interactive");
 		const notSession = join(dir, "other.jsonl");
 		writeFileSync(notSession, '{"type":"other"}\n');
-		expect(pi.looksLikeSession(notSession)).toBe(false);
+		expect(pi.classify(notSession)).toBe("invalid");
 	});
 });
 
@@ -193,8 +193,7 @@ describe("config merge", () => {
 	it("keeps defaults on garbage and overrides on valid values", () => {
 		const defaults = mergeConfig(undefined);
 		expect(defaults.scan.minNewTokens).toBe(20_000);
-		expect(defaults.scan.maxNewTokens).toBe(80_000);
-		expect(defaults.observe.batchSize).toBe(4);
+		expect(defaults.scan.maxNewTokens).toBe(200_000);
 		expect(defaults.scan.harnesses).toEqual(["pi", "codex", "claude", "grok"]);
 		const merged = mergeConfig({ scan: { minNewTokens: 5 }, consolidate: { maxMemoryChars: 999 } });
 		expect(merged.scan.minNewTokens).toBe(5);

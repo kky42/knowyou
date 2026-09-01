@@ -11,9 +11,13 @@ export interface ConsolidationReport {
 	triggered: boolean;
 	/** All pending observations folded into MEMORY.md (pool files deleted). */
 	folded: number;
-	/** Final MEMORY.md size in chars — written as-is even when over quota. */
+	/** Final MEMORY.md size in chars after retry and deterministic fallback enforcement. */
 	memoryChars: number;
 	overQuota: boolean;
+	/** True when the first model output exceeded the quota and was regenerated. */
+	retried?: boolean;
+	/** True when the second output still exceeded quota and was deterministically trimmed. */
+	trimmed?: boolean;
 	journalFile?: string;
 	errors: string[];
 }
@@ -29,6 +33,23 @@ export function poolFiles(home: string): string[] {
 		.filter((name) => name.endsWith(".md"))
 		.sort() // timestamp names sort chronologically — oldest first
 		.map((name) => join(dir, name));
+}
+
+function parseOutput(raw: string): { memory: string; journal: string } | undefined {
+	const memoryStart = raw.indexOf("===MEMORY===");
+	const journalStart = raw.indexOf("===JOURNAL===");
+	if (memoryStart === -1 || journalStart === -1 || journalStart < memoryStart) return undefined;
+	const memory = raw.slice(memoryStart + "===MEMORY===".length, journalStart).trim();
+	if (!memory) return undefined;
+	return { memory, journal: raw.slice(journalStart + "===JOURNAL===".length).trim() };
+}
+
+function retainTail(memory: string, maxChars: number): { memory: string; removed: string } {
+	if (memory.length <= maxChars) return { memory, removed: "" };
+	const cut = memory.length - maxChars;
+	const nextLine = memory.indexOf("\n", cut);
+	const boundary = nextLine === -1 ? cut : nextLine + 1;
+	return { memory: memory.slice(boundary), removed: memory.slice(0, boundary).trim() };
 }
 
 /**
@@ -47,9 +68,7 @@ export async function runConsolidation(
 	const pool = poolFiles(home);
 	const memoryFile = join(home, "MEMORY.md");
 	const currentMemory = existsSync(memoryFile) ? readFileSync(memoryFile, "utf8") : "";
-	// Two triggers: pool at its limit, OR MEMORY.md over its quota (the soft-budget
-	// self-correction path — without this, an oversized MEMORY.md would never shrink
-	// unless the pool happened to fill up again).
+	// Two triggers: pool at its limit, OR a pre-existing MEMORY.md over its quota.
 	const poolFull = pool.length >= config.consolidate.triggerObservations;
 	const overQuota = currentMemory.length > config.consolidate.maxMemoryChars;
 	if (!poolFull && !overQuota) return report;
@@ -76,28 +95,38 @@ export async function runConsolidation(
 
 	const distill =
 		deps.distill ?? ((p: string) => runAgentPrompt({ prompt: p, model: config.agent.model, thinking: config.agent.thinking }));
-	const raw = await distill(prompt);
-
-	const memoryStart = raw.indexOf("===MEMORY===");
-	const journalStart = raw.indexOf("===JOURNAL===");
-	if (memoryStart === -1 || journalStart === -1 || journalStart < memoryStart) {
+	let raw = await distill(prompt);
+	let parsed = parseOutput(raw);
+	if (!parsed) {
 		report.errors.push("consolidation output missing ===MEMORY===/===JOURNAL=== markers");
 		return report;
 	}
-	const newMemory = raw
-		.slice(memoryStart + "===MEMORY===".length, journalStart)
-		.trim();
-	const journal = raw.slice(journalStart + "===JOURNAL===".length).trim();
-	if (!newMemory) {
-		report.errors.push("consolidation produced an empty MEMORY section");
-		return report;
+
+	if (parsed.memory.length > config.consolidate.maxMemoryChars) {
+		report.retried = true;
+		raw = await distill(
+			`Your previous MEMORY section was ${parsed.memory.length} characters, exceeding the hard limit of ${config.consolidate.maxMemoryChars}. Regenerate the complete result once, preserving important recent information while staying within the limit.\n\n${prompt}`,
+		);
+		parsed = parseOutput(raw);
+		if (!parsed) {
+			report.errors.push("consolidation retry output missing ===MEMORY===/===JOURNAL=== markers");
+			return report;
+		}
 	}
 
-	// Measure only — never modify the model's output. Overshoot is written as-is and
-	// self-corrects: the next consolidation sees the over-quota percentage and shrinks.
+	let newMemory = parsed.memory;
+	let journal = parsed.journal;
+	if (newMemory.length > config.consolidate.maxMemoryChars) {
+		const retained = retainTail(newMemory, config.consolidate.maxMemoryChars);
+		newMemory = retained.memory;
+		const overflowArchive = `## Quota overflow archive\n\n${retained.removed}`;
+		journal = journal && journal !== "-" ? `${journal}\n\n${overflowArchive}` : overflowArchive;
+		report.trimmed = true;
+	}
+
 	const memoryChars = newMemory.length;
 	report.memoryChars = memoryChars;
-	report.overQuota = memoryChars > config.consolidate.maxMemoryChars;
+	report.overQuota = false;
 
 	// Crash-safe order: journal first, then MEMORY.md, then remove absorbed pool files.
 	const journalsDir = join(home, "journals");

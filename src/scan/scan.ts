@@ -148,15 +148,6 @@ export async function scanPhase(config: KnowyouConfig, state: ScanState, now = n
 			};
 
 			try {
-				if (!adapter.looksLikeSession(info.path)) {
-					classify("invalid");
-					continue;
-				}
-				if (adapter.isExcluded(info.path)) {
-					classify("machine");
-					continue;
-				}
-
 				const entry: SessionWatermark = state.sessions[info.path] ?? {
 					bytes: 0,
 					mtimeMs: 0,
@@ -167,8 +158,19 @@ export async function scanPhase(config: KnowyouConfig, state: ScanState, now = n
 					chunks: 0,
 				};
 
+				// Fully absorbed unchanged sessions need no header read or parsing.
 				if (fileUnchanged(entry, info.mtimeMs, info.bytes) && entry.offset >= info.bytes) {
 					classify(entry.noise ? "noise" : entry.pending ? "pending" : "unchanged");
+					continue;
+				}
+
+				const interaction = adapter.classify(info.path);
+				if (interaction === "invalid") {
+					classify("invalid");
+					continue;
+				}
+				if (interaction === "non-interactive") {
+					classify("machine");
 					continue;
 				}
 

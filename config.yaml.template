@@ -7,7 +7,7 @@ scan:
   # Estimated tokens in normalized, unprocessed transcript text (UTF-8 bytes / 4).
   # Below minNewTokens stays pending; maxNewTokens bounds each raw session slice.
   minNewTokens: 20000
-  maxNewTokens: 80000
+  maxNewTokens: 200000
   windowDays: 7
   minUserTurns: 2
   redactSecrets: true
@@ -26,8 +26,8 @@ agent:
   # thinking: medium
 
 observe:
-  # Up to four compacted slices are sent in one model call, serially.
-  batchSize: 4
+  # Each raw slice is compacted to at most 10K estimated tokens and observed alone;
+  # instructions and metadata keep the complete observation request below 12K.
   maxObservationChars: 500
   # Cold-start guard; remaining slices are retried on the next scheduled run.
   maxSlicesPerRun: 10

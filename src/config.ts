@@ -16,7 +16,6 @@ export interface KnowyouConfig {
 		harnesses: HarnessName[];
 	};
 	observe: {
-		batchSize: number;
 		maxObservationChars: number;
 		/** Maximum raw slices handled in one scheduled run; zero is not allowed. */
 		maxSlicesPerRun: number;
@@ -34,13 +33,12 @@ export const DEFAULTS: KnowyouConfig = {
 	scan: {
 		windowDays: 7,
 		minNewTokens: 20_000,
-		maxNewTokens: 80_000,
+		maxNewTokens: 200_000,
 		minUserTurns: 2,
 		redactSecrets: true,
 		harnesses: ["pi", "codex", "claude", "grok"],
 	},
 	observe: {
-		batchSize: 4,
 		maxObservationChars: 500,
 		maxSlicesPerRun: 10,
 	},
@@ -99,7 +97,6 @@ export function mergeConfig(raw: unknown): KnowyouConfig {
 			harnesses: harnesses && harnesses.length > 0 ? harnesses : [...DEFAULTS.scan.harnesses],
 		},
 		observe: {
-			batchSize: mergeNumber(DEFAULTS.observe.batchSize, observe["batchSize"]),
 			maxObservationChars: mergeNumber(
 				DEFAULTS.observe.maxObservationChars,
 				observe["maxObservationChars"] ?? limits["maxObservationChars"],

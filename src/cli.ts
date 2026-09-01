@@ -93,7 +93,7 @@ async function runPipeline(home: string): Promise<number> {
 	if (consolidation.triggered) {
 		console.log(
 			`consolidate: folded ${consolidation.folded} observation(s) — MEMORY.md ${consolidation.memoryChars}/${config.consolidate.maxMemoryChars} chars` +
-				(consolidation.overQuota ? " (over quota — will shrink next round)" : ""),
+				(consolidation.trimmed ? " (retry remained over quota; oldest prefix archived)" : consolidation.retried ? " (fit after one retry)" : ""),
 		);
 		if (consolidation.journalFile) console.log(`journal: ${consolidation.journalFile}`);
 		for (const err of consolidation.errors) console.error(`consolidate error: ${err}`);

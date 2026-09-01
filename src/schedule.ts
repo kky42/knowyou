@@ -77,6 +77,21 @@ export function buildPlist(opts: {
 `;
 }
 
+/** Translate intervals cron can represent without silently changing their cadence. */
+export function cronSchedule(intervalSeconds: number): string {
+	const minutes = Math.max(1, Math.round(intervalSeconds / 60));
+	if (minutes < 60) return `*/${minutes} * * * *`;
+	if (minutes % 60 === 0) {
+		const hours = minutes / 60;
+		if (hours <= 23) return `0 */${hours} * * *`;
+	}
+	if (minutes % 1440 === 0) {
+		const days = minutes / 1440;
+		if (days <= 31) return `0 0 */${days} * *`;
+	}
+	throw new Error(`Linux cron cannot represent an exact ${intervalSeconds}s interval; use whole minutes under an hour, whole hours, or whole days`);
+}
+
 function uid(): string {
 	return String(process.getuid?.() ?? "");
 }
@@ -134,7 +149,7 @@ export function start(): { intervalSeconds: number; jobPath: string; logPath: st
 		const kept = current.filter((l) => !l.includes(LABEL));
 		const piDirLinux = piDir();
 		const pathPrefix = piDirLinux ? `PATH=${piDirLinux}:/usr/bin:/bin ` : "";
-		const cron = `*/${Math.max(1, Math.round(intervalSeconds / 60))} * * * * ${pathPrefix}${process.execPath} ${scriptPath} run >> ${logPath} 2>&1 # ${LABEL}`;
+		const cron = `${cronSchedule(intervalSeconds)} ${pathPrefix}${process.execPath} ${scriptPath} run >> ${logPath} 2>&1 # ${LABEL}`;
 		kept.push(cron);
 		writeFileSync(jobPath + ".cron", kept.join("\n") + "\n");
 		execFileSync("crontab", [jobPath + ".cron"]);

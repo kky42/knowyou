@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { acquireLock } from "../src/lock.js";
 import { atomicWriteFileSync } from "../src/atomic.js";
 import { redactSecrets } from "../src/scan/redact.js";
-import { preprocessEvents } from "../src/observe/preprocess.js";
+import { MAX_COMPACTED_TOKENS, preprocessEvents } from "../src/observe/preprocess.js";
+import { buildObservationPrompt } from "../src/observe/prompts.js";
+import { estimateTokens } from "../src/tokens.js";
 import type { MessageEvent } from "../src/scan/events.js";
 import { runScan } from "../src/pipeline.js";
 import { loadState } from "../src/scan/state.js";
@@ -106,6 +108,31 @@ describe("redaction of unquoted env/shell assignments", () => {
 			const bounded = preprocessEvents([{ kind: "message", role: "assistant", text: "x".repeat(10000) }], 20);
 			expect(bounded.elided).toBe(true);
 			expect(bounded.estimatedTokens).toBeLessThanOrEqual(20);
+		});
+
+		it("caps one default observation trace at 10K estimated tokens", () => {
+			const events = Array.from({ length: 12 }, (_, index): MessageEvent => ({
+				kind: "message",
+				role: index % 2 === 0 ? "user" : "assistant",
+				text: `${index}:` + "signal ".repeat(1500),
+			}));
+			const compacted = preprocessEvents(events);
+			expect(compacted.elided).toBe(true);
+			expect(compacted.estimatedTokens).toBeLessThanOrEqual(MAX_COMPACTED_TOKENS);
+			const prompt = buildObservationPrompt(
+				{
+					harness: "codex",
+					path: `/workspace/${"p".repeat(1000)}/session.jsonl`,
+					sequence: 0,
+					startOffset: 0,
+					endOffset: 800_000,
+					rawTokens: 200_000,
+					compactedTokens: compacted.estimatedTokens,
+					text: compacted.text,
+				},
+				500,
+			);
+			expect(estimateTokens(prompt)).toBeLessThan(12_000);
 		});
 	});
 

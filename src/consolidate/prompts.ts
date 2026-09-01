@@ -8,8 +8,8 @@ export interface ConsolidationInput {
 
 /**
  * Budget-aware consolidation prompt. The model sees exactly how much room is left
- * (chars, percent, headroom) and decides what to fold and what to evict; the quota is
- * advisory — overshoot is written as-is and self-corrects on the next round.
+ * (chars, percent, headroom) and decides what to fold and what to evict. Code enforces
+ * the quota with one feedback retry and a deterministic archival fallback.
  *
  * Content rules are borrowed from observational-memory's consolidator prompt (current-state
  * prose, supersession, preserve distinguishing detail, conservative topic routing).
@@ -38,7 +38,7 @@ observations are about to be deleted, so anything worth keeping that you fail to
 here is forgotten forever. Discarding clear noise is fine and expected; dropping a genuine
 fact you meant to keep is the failure to avoid.
 
-## Budget (advisory, but treat as the target)
+## Budget (hard limit)
 
 - Current MEMORY.md: ${current} / ${max} chars (${percent}% full)
 - Remaining headroom: ${headroom} chars
@@ -47,9 +47,7 @@ fact you meant to keep is the failure to avoid.
 Keep the final MEMORY.md within ${max} chars. If folding everything would exceed the
 budget, condense the OLDEST sections and move their content into the JOURNAL section
 (concise wording) — recent content stays detailed, the distant past gets compressed.
-If you end up over budget anyway, that is acceptable: it will be visible on the next
-consolidation and you (or a later run) will shrink it then. Never drop content silently
-just to fit; evict it through the JOURNAL section instead.
+Never drop content silently just to fit; evict it through the JOURNAL section instead.
 
 ## Current MEMORY.md
 

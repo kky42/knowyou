@@ -11,7 +11,7 @@ export interface ObservationInput {
 	text: string;
 }
 
-const PROMPT_TEMPLATE = `You distill one observation from a small neighborhood of compacted AI coding-agent session slices. Slices may continue the same session or come from nearby sessions. Keep facts attributable and resolve conflicts by the latest stated state.
+const PROMPT_TEMPLATE = `You distill one observation from one compacted AI coding-agent session slice. Keep facts attributable and resolve conflicts by the latest stated state.
 
 These records are the session's memory: once the raw conversation is gone, only what you capture is remembered, and anything you distort is remembered wrong.
 
@@ -30,19 +30,14 @@ Content rules:
 - When statements conflict, the latest reflects current state.
 - Write in the conversation's language. Never include API keys, tokens, or credentials. Never speculate beyond the transcript.
 
-Compacted transcript slices:
+Compacted transcript slice:
 ---
-{SLICES}
+{SLICE}
 ---`;
 
-export function buildObservationPrompt(slices: ObservationInput[], maxObservationChars: number): string {
-	const text = slices
-		.map(
-			(slice) =>
-				`## slice ${slice.sequence} · ${slice.harness} · ${slice.path} · bytes ${slice.startOffset}-${slice.endOffset} · raw ~${slice.rawTokens} tokens · compacted ~${slice.compactedTokens} tokens\n${slice.text}`,
-		)
-		.join("\n\n");
-	return PROMPT_TEMPLATE.replace("{MAX_CHARS}", String(maxObservationChars)).replace("{SLICES}", text);
+export function buildObservationPrompt(slice: ObservationInput, maxObservationChars: number): string {
+	const text = `## slice ${slice.sequence} · ${slice.harness} · ${slice.path} · bytes ${slice.startOffset}-${slice.endOffset} · raw ~${slice.rawTokens} tokens · compacted ~${slice.compactedTokens} tokens\n${slice.text}`;
+	return PROMPT_TEMPLATE.replace("{MAX_CHARS}", String(maxObservationChars)).replace("{SLICE}", text);
 }
 
 export interface ParsedObservation {

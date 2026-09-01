@@ -38,10 +38,8 @@ export interface HarnessAdapter {
 	roots: string[];
 	/** Files with mtime >= cutoffMs only — the time window is applied at enumeration. */
 	enumerate(cutoffMs: number): CandidateInfo[];
-	looksLikeSession(path: string): boolean;
-	/** True for non-interactive machine sessions (codex exec, claude sdk, cron bridges) —
-	 *  the self-exclusion half that --no-session cannot cover (other harnesses' runners). */
-	isExcluded(path: string): boolean;
+	/** Classify once per scan; adapters may need to read session metadata from disk. */
+	classify(path: string): "interactive" | "non-interactive" | "invalid";
 	readIncrement(path: string, offset: number, redact: boolean): IncrementResult;
 }
 
@@ -96,11 +94,12 @@ function harnessAdapter(
 	transcriptPath: (path: string) => string = (p) => p,
 ): HarnessAdapter {
 	const classifyCandidate = (path: string): any | undefined => {
-		const stat = statCandidate(path);
+		const chatPath = transcriptPath(path);
+		const stat = statCandidate(chatPath);
 		if (!stat) return undefined;
 		try {
 			// Backpass classify() signals "not a session" with null — normalise to undefined.
-			return classifyUpstream(stat) ?? undefined;
+			return classifyUpstream({ ...stat, path, chatPath }) ?? undefined;
 		} catch {
 			return undefined;
 		}
@@ -118,19 +117,16 @@ function harnessAdapter(
 				return [];
 			}
 		},
-		looksLikeSession(path: string): boolean {
-			return classifyCandidate(path) !== undefined;
-		},
-		isExcluded(path: string): boolean {
+		classify(path: string): "interactive" | "non-interactive" | "invalid" {
 			const descriptor = classifyCandidate(path);
-			if (!descriptor) return false;
+			if (!descriptor) return "invalid";
 			const verdict = classifyInteraction({
 				harness: name,
 				cwd: descriptor.cwd,
 				interaction: descriptor.interaction,
 				interactionSignals: descriptor.interactionSignals ?? descriptor.extra?.interactionSignals ?? emptyInteractionSignals(),
 			});
-			return verdict === "non-interactive";
+			return verdict === "non-interactive" ? "non-interactive" : "interactive";
 		},
 		readIncrement(path: string, offset: number, redact: boolean): IncrementResult {
 			const jsonl = transcriptPath(path);

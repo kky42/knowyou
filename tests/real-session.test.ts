@@ -71,7 +71,7 @@ function fixtureStore(name: string): string {
 
 describe("adapter on real session files", () => {
 	it("recognises a real session file", () => {
-		expect(pi.looksLikeSession(RICH)).toBe(true);
+		expect(pi.classify(RICH)).toBe("interactive");
 	});
 
 	it("counts only message text on a real file — thinking/toolCall blocks and metadata excluded", () => {
@@ -133,6 +133,17 @@ describe("adapter on real session files", () => {
 	});
 });
 
+describe("Grok directory sessions", () => {
+	it("classifies a session directory using its chat transcript metadata", () => {
+		const grok = getAdapter("grok")!;
+		const session = join(storeRoot, "grok-project", "session-id");
+		mkdirSync(session, { recursive: true });
+		writeFileSync(join(session, "chat_history.jsonl"), `${JSON.stringify({ type: "user", content: "hello" })}\n`);
+		writeFileSync(join(session, "summary.json"), JSON.stringify({ info: { cwd: "/project", id: "session-id" } }));
+		expect(grok.classify(session)).toBe("interactive");
+	});
+});
+
 describe("scan pipeline on real session files", () => {
 	const CONFIG = mergeConfig({
 		scan: { minNewTokens: 10, minUserTurns: 2, windowDays: 7, harnesses: ["pi"] },
@@ -141,7 +152,7 @@ describe("scan pipeline on real session files", () => {
 	// Echo the chunk itself (not the surrounding prompt template) so assertions can
 	// verify which conversation text actually reached the model.
 	const FAKE_DISTILL = async (prompt: string) => {
-		const chunk = prompt.split("Compacted transcript slices:\n---\n")[1]?.replace(/\n---\s*$/, "") ?? "";
+		const chunk = prompt.split("Compacted transcript slice:\n---\n")[1]?.replace(/\n---\s*$/, "") ?? "";
 		return `SUMMARY: real-file observation\n\n${chunk}`;
 	};
 
@@ -202,8 +213,8 @@ describe("non-interactive exclusion (self-exclusion for other harnesses' runners
 		// The exec fixture's session_meta carries source: "exec" — backpass interaction.js
 		// classifies it non-interactive, which is how a future knowyou codex runner is
 		// excluded from observing itself.
-		expect(codex.isExcluded(execFile)).toBe(true);
-		expect(pi.isExcluded(RICH)).toBe(false);
+		expect(codex.classify(execFile)).toBe("non-interactive");
+		expect(pi.classify(RICH)).toBe("interactive");
 	});
 
 	it("truncated files re-read from zero instead of skipping past EOF", () => {
