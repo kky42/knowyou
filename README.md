@@ -8,7 +8,7 @@
 
 knowyou is a non-intrusive, agent-agnostic memory layer for Pi, Codex, Claude, and Grok. It runs in the background, distilling and consolidating session context into shared Markdown—so every agent knows why it is here, what matters next, and how you like to work.
 
-![knowyou asynchronous data flow: supported agent sessions flow through token-bounded scan slices, serial observation batches, consolidation, and shared Markdown memory](assets/knowyou-flow-async.svg)
+![knowyou asynchronous data flow: supported agent sessions flow through token-bounded scan slices, serial observation batches, consolidation, and shared Markdown memory](assets/knowyou-flow-async-v2.png)
 
 ## Quick start
 
